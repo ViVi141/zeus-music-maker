@@ -1,0 +1,99 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Runtime
+*.pbo
+*.pbo.bak
+*.pbo.tmp
+
+# Build artifacts
+dist/
+build/
+out/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Project specific
+# 导出的模组文件
+@*/
+mod_export/
+music_mod_export/
+
+# 音频文件（如果不想提交）
+*.ogg
+*.mp3
+*.wav
+*.flac
+*.m4a
+*.aac
+
+# 图片文件（如果不想提交）
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.tga
+*.tiff
+*.webp
+
+# PAA文件（如果不想提交）
+*.paa
+
+# 加密音频文件
+*.kgm
+*.ncm
+
+# 配置文件（如果包含敏感信息）
+config.json
+settings.json
+
+# 用户数据
+user_data/
+saves/
+projects/
+
+# 外部库文件
+lib/
+libncmdump-*/
+*.dll
+*.so
+*.dylib
+
+# 测试文件
+test_files/
+test_audio/
+test_images/
+
+# 文档生成
+docs/_build/
+site/
+
+# 其他
+*.orig
+*.rej

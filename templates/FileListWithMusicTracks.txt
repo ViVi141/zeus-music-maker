@@ -1,0 +1,7 @@
+class {{track_class}}
+{
+    name = "{{track_name}}";
+    sound[] = {"{{track_path}}", db{{decibels}}, 1};
+    duration = {{duration}};
+    musicClass = "{{class_name}}";
+};

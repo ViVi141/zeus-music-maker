@@ -1,0 +1,24 @@
+class CfgPatches
+{
+    class {{mod_name_no_spaces}}
+    {
+        name = "{{mod_name}}";
+        author = "{{author_name}}";
+        requiredVersion = 1.00;
+        requiredAddons[] = {};
+        units[] = {};
+        weapons[] = {};
+        worlds[] = {};
+    };
+};
+class CfgMusic
+{
+    #include "FileListWithMusicTracks.hpp"
+};
+class CfgMusicClasses
+{
+    class {{class_name}}
+    {
+        displayName = "{{mod_name}}";
+    };
+};
