@@ -17,6 +17,7 @@ mod paa_converter;
 mod audio_decrypt;
 mod templates;
 mod ui;
+mod threading;
 
 use app::ZeusMusicApp;
 

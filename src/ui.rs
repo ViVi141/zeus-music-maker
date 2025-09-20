@@ -2,8 +2,9 @@ use eframe::egui;
 use log::{info, warn};
 
 use crate::file_ops::FileOperations;
-use crate::models::AppState;
+use crate::models::{AppState, TaskType, TaskStatus};
 use crate::templates::TemplateEngine;
+use crate::threading::ThreadedTaskProcessor;
 
 /// UI组件
 pub struct UIComponents;
@@ -143,6 +144,9 @@ impl UIComponents {
         ui.horizontal(|ui| {
             if ui.button("添加OGG歌曲").clicked() {
                 if let Some(paths) = FileOperations::select_audio_files() {
+                    // 使用多线程处理音频加载
+                    state.task_manager.start_task(crate::models::TaskType::AudioLoad, paths.len());
+                    // 这里需要从外部传入 task_processor，暂时使用简单版本
                     match FileOperations::load_audio_files(paths, &state.project.class_name) {
                         Ok(tracks) => {
                             let track_count = tracks.len();
@@ -153,11 +157,13 @@ impl UIComponents {
                                 info!("添加轨道: {}", track_name);
                             }
                             info!("添加了 {} 个轨道，当前总轨道数: {}", track_count, state.track_count());
+                            state.task_manager.complete_task();
                             // 强制重绘UI
                             ui.ctx().request_repaint();
                         }
                         Err(e) => {
                             warn!("加载音频文件失败: {}", e);
+                            state.task_manager.fail_task(format!("加载音频文件失败: {}", e));
                         }
                     }
                 }
@@ -288,7 +294,7 @@ impl UIComponents {
                             ui.heading("导出信息");
                             ui.add_space(5.0);
                             ui.label(format!(
-                                "模组将在程序可执行文件同目录下创建名为 {} 的文件夹。",
+                                "模组将在选择的导出目录下创建名为 {} 的文件夹。",
                                 state.project.mod_name_no_spaces()
                             ));
                         });
@@ -673,7 +679,7 @@ impl UIComponents {
     }
 
     /// 显示PAA转换对话框
-    pub fn show_paa_converter_dialog(ctx: &egui::Context, state: &mut AppState) {
+    pub fn show_paa_converter_dialog(ctx: &egui::Context, state: &mut AppState, task_processor: Option<&mut ThreadedTaskProcessor>) {
         if !state.show_paa_converter {
             return;
         }
@@ -831,7 +837,22 @@ impl UIComponents {
         // 在闭包外面执行转换，避免借用冲突
         if should_convert {
             if let Some(ref output_dir) = state.paa_output_directory {
-                Self::convert_images_to_paa_simple(state.paa_selected_files.clone(), output_dir.clone(), state.paa_options.clone(), state);
+                if let Some(processor) = task_processor {
+                    // 使用多线程处理
+                    state.task_manager.start_task(crate::models::TaskType::PaaConvert, state.paa_selected_files.len());
+                    processor.reset_cancel_flag();
+                    
+                    if let Err(e) = processor.process_paa_convert(
+                        state.paa_selected_files.clone(), 
+                        output_dir.clone(), 
+                        state.paa_options.clone()
+                    ) {
+                        state.task_manager.fail_task(format!("启动PAA转换任务失败: {}", e));
+                    }
+                } else {
+                    // 回退到简单版本
+                    Self::convert_images_to_paa_simple(state.paa_selected_files.clone(), output_dir.clone(), state.paa_options.clone(), state);
+                }
             }
         }
     }
@@ -1114,97 +1135,6 @@ impl UIComponents {
         }
     }
 
-    /// 解密音频文件并存储结果到AppState
-    pub fn decrypt_audio_files_with_state(state: &mut AppState, selected_files: Vec<std::path::PathBuf>, output_dir: std::path::PathBuf) {
-        let mut success_count = 0;
-        let mut error_count = 0;
-        let mut success_files = Vec::new();
-        let mut error_files = Vec::new();
-        
-        for input_path in &selected_files {
-            // 检查文件类型并解密
-            if crate::audio_decrypt::AudioDecryptManager::is_kugou_file(input_path) {
-                match crate::audio_decrypt::AudioDecryptManager::decrypt_kugou_file(input_path, &output_dir) {
-                    Ok(output_path) => {
-                        success_count += 1;
-                        success_files.push(format!("酷狗: {} -> {}", 
-                            input_path.file_name().unwrap_or_default().to_string_lossy(),
-                            std::path::Path::new(&output_path).file_name().unwrap_or_default().to_string_lossy()
-                        ));
-                        log::info!("成功解密酷狗文件: {} -> {}", input_path.display(), output_path);
-                    }
-                    Err(e) => {
-                        error_count += 1;
-                        error_files.push(format!("酷狗: {} - {}", 
-                            input_path.file_name().unwrap_or_default().to_string_lossy(),
-                            e
-                        ));
-                        log::error!("解密酷狗文件失败: {} - {}", input_path.display(), e);
-                    }
-                }
-            } else if crate::audio_decrypt::AudioDecryptManager::is_netease_file(input_path) {
-                match crate::audio_decrypt::AudioDecryptManager::decrypt_netease_file(input_path, &output_dir) {
-                    Ok(output_path) => {
-                        success_count += 1;
-                        success_files.push(format!("网易云: {} -> {}", 
-                            input_path.file_name().unwrap_or_default().to_string_lossy(),
-                            std::path::Path::new(&output_path).file_name().unwrap_or_default().to_string_lossy()
-                        ));
-                        log::info!("成功解密网易云文件: {} -> {}", input_path.display(), output_path);
-                    }
-                    Err(e) => {
-                        error_count += 1;
-                        error_files.push(format!("网易云: {} - {}", 
-                            input_path.file_name().unwrap_or_default().to_string_lossy(),
-                            e
-                        ));
-                        log::error!("解密网易云文件失败: {} - {}", input_path.display(), e);
-                    }
-                }
-            } else {
-                error_count += 1;
-                error_files.push(format!("不支持: {} - 不支持的音频格式", 
-                    input_path.file_name().unwrap_or_default().to_string_lossy()
-                ));
-            }
-        }
-        
-        // 构建解密结果消息
-        let mut result_message = if error_count == 0 {
-            format!("音频解密完成！\n\n输出目录: {}\n\n", output_dir.display())
-        } else if success_count > 0 {
-            format!("音频解密完成（部分失败）\n\n输出目录: {}\n\n", output_dir.display())
-        } else {
-            format!("音频解密失败！\n\n输出目录: {}\n\n", output_dir.display())
-        };
-        
-        result_message.push_str(&format!("统计信息:\n  总文件数: {}\n  成功: {}\n  失败: {}\n", 
-            selected_files.len(), success_count, error_count));
-        
-        if !success_files.is_empty() {
-            result_message.push_str("\n成功解密的文件:\n");
-            for file in &success_files {
-                result_message.push_str(&format!("  {}\n", file));
-            }
-        }
-        
-        if !error_files.is_empty() {
-            result_message.push_str("\n解密失败的文件:\n");
-            for file in &error_files {
-                result_message.push_str(&format!("  {}\n", file));
-            }
-        }
-        
-        // 存储结果到AppState
-        state.audio_decrypt_result = Some(result_message);
-        state.show_audio_decrypt_result = true;
-        
-        if success_count > 0 {
-            log::info!("音频解密完成: 成功 {} 个，失败 {} 个", success_count, error_count);
-        } else {
-            log::warn!("所有音频文件解密失败");
-        }
-    }
 
 
     /// 转换图片为PAA格式（简单版本）
@@ -1464,6 +1394,135 @@ impl UIComponents {
         if should_close {
             state.show_audio_decrypt_result = false;
             state.audio_decrypt_result = None;
+        }
+    }
+
+    /// 显示进度对话框
+    pub fn show_progress_dialog(ctx: &egui::Context, state: &mut AppState, task_processor: &mut ThreadedTaskProcessor) {
+        if !state.task_manager.show_progress {
+            return;
+        }
+
+        let safe_pos = Self::calculate_safe_position(ctx, [500.0, 300.0].into(), [200.0, 200.0].into());
+        let mut should_close = false;
+        let mut should_cancel = false;
+        
+        let current_progress = state.task_manager.get_current_progress().cloned();
+        
+        egui::Window::new("处理进度")
+            .open(&mut state.task_manager.show_progress)
+            .default_pos(safe_pos)
+            .resizable(false)
+            .default_size([500.0, 300.0])
+            .min_size([400.0, 200.0])
+            .max_size([600.0, 400.0])
+            .show(ctx, |ui| {
+                ui.set_min_height(ui.available_height());
+                
+                if let Some(ref progress) = current_progress {
+                    // 任务类型和状态
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.heading(match progress.task_type {
+                                TaskType::AudioDecrypt => "音频解密",
+                                TaskType::PaaConvert => "PAA转换",
+                                TaskType::ModExport => "模组导出",
+                                TaskType::AudioLoad => "音频加载",
+                            });
+                            
+                            ui.add_space(5.0);
+                            
+                            ui.horizontal(|ui| {
+                                ui.label("状态:");
+                                match &progress.status {
+                                    TaskStatus::Pending => ui.colored_label(egui::Color32::GRAY, "等待中"),
+                                    TaskStatus::Running => ui.colored_label(egui::Color32::GREEN, "处理中"),
+                                    TaskStatus::Completed => ui.colored_label(egui::Color32::BLUE, "已完成"),
+                                    TaskStatus::Failed(e) => ui.colored_label(egui::Color32::RED, &format!("失败: {}", e)),
+                                    TaskStatus::Cancelled => ui.colored_label(egui::Color32::YELLOW, "已取消"),
+                                }
+                            });
+                        });
+                    });
+                    
+                    ui.add_space(10.0);
+                    
+                    // 进度条
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.heading("进度信息");
+                            ui.add_space(5.0);
+                            
+                            // 进度条
+                            ui.add(egui::ProgressBar::new(progress.progress)
+                                .text(format!("{:.1}%", progress.progress * 100.0)));
+                            
+                            ui.add_space(5.0);
+                            
+                            // 文件信息
+                            ui.horizontal(|ui| {
+                                ui.label(format!("文件: {}/{}", progress.current_file, progress.total_files));
+                                if !progress.current_filename.is_empty() {
+                                    ui.label(format!("当前: {}", progress.current_filename));
+                                }
+                            });
+                            
+                            // 时间信息
+                            if let Some(start_time) = progress.start_time {
+                                let elapsed = start_time.elapsed().unwrap_or_default();
+                                ui.horizontal(|ui| {
+                                    ui.label(format!("已用时间: {:.1}秒", elapsed.as_secs_f32()));
+                                    
+                                    if let Some(remaining) = progress.estimated_remaining {
+                                        ui.label(format!("预计剩余: {}秒", remaining));
+                                    }
+                                    
+                                    if let Some(speed) = progress.processing_speed {
+                                        ui.label(format!("速度: {:.1}文件/秒", speed));
+                                    }
+                                });
+                            }
+                        });
+                    });
+                    
+                    ui.add_space(10.0);
+                    
+                    // 按钮区域
+                    ui.horizontal(|ui| {
+                        if state.task_manager.can_cancel {
+                            if ui.button("取消任务").clicked() {
+                                should_cancel = true;
+                            }
+                        }
+                        
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if matches!(progress.status, TaskStatus::Completed | TaskStatus::Failed(_) | TaskStatus::Cancelled) {
+                                if ui.button("关闭").clicked() {
+                                    should_close = true;
+                                }
+                            }
+                        });
+                    });
+                } else {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(20.0);
+                        ui.label("没有正在运行的任务");
+                        ui.add_space(20.0);
+                        
+                        if ui.button("关闭").clicked() {
+                            should_close = true;
+                        }
+                    });
+                }
+            });
+        
+        if should_close {
+            state.task_manager.show_progress = false;
+        }
+        
+        if should_cancel {
+            task_processor.cancel_task();
+            state.task_manager.cancel_task();
         }
     }
 }

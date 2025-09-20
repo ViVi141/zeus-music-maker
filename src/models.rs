@@ -135,6 +135,168 @@ pub struct ExportSettings {
     pub use_default_logo: bool,
 }
 
+/// 任务类型
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TaskType {
+    AudioDecrypt,
+    PaaConvert,
+    ModExport,
+    AudioLoad,
+}
+
+/// 任务状态
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum TaskStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed(String),
+    Cancelled,
+}
+
+/// 进度信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProgressInfo {
+    /// 任务类型
+    pub task_type: TaskType,
+    /// 任务状态
+    pub status: TaskStatus,
+    /// 当前进度 (0.0 - 1.0)
+    pub progress: f32,
+    /// 当前处理的文件索引
+    pub current_file: usize,
+    /// 总文件数
+    pub total_files: usize,
+    /// 当前处理的文件名
+    pub current_filename: String,
+    /// 开始时间
+    pub start_time: Option<std::time::SystemTime>,
+    /// 预计剩余时间（秒）
+    pub estimated_remaining: Option<u64>,
+    /// 处理速度（文件/秒）
+    pub processing_speed: Option<f32>,
+}
+
+impl Default for ProgressInfo {
+    fn default() -> Self {
+        Self {
+            task_type: TaskType::AudioDecrypt,
+            status: TaskStatus::Pending,
+            progress: 0.0,
+            current_file: 0,
+            total_files: 0,
+            current_filename: String::new(),
+            start_time: None,
+            estimated_remaining: None,
+            processing_speed: None,
+        }
+    }
+}
+
+/// 任务管理器
+#[derive(Debug, Clone)]
+pub struct TaskManager {
+    /// 当前运行的任务
+    pub current_task: Option<ProgressInfo>,
+    /// 任务历史
+    pub task_history: Vec<ProgressInfo>,
+    /// 是否显示进度对话框
+    pub show_progress: bool,
+    /// 是否允许取消当前任务
+    pub can_cancel: bool,
+}
+
+impl Default for TaskManager {
+    fn default() -> Self {
+        Self {
+            current_task: None,
+            task_history: Vec::new(),
+            show_progress: false,
+            can_cancel: false,
+        }
+    }
+}
+
+impl TaskManager {
+    /// 开始新任务
+    pub fn start_task(&mut self, task_type: TaskType, total_files: usize) {
+        self.current_task = Some(ProgressInfo {
+            task_type,
+            status: TaskStatus::Running,
+            progress: 0.0,
+            current_file: 0,
+            total_files,
+            current_filename: String::new(),
+            start_time: Some(std::time::SystemTime::now()),
+            estimated_remaining: None,
+            processing_speed: None,
+        });
+        self.show_progress = true;
+        self.can_cancel = true;
+    }
+
+    /// 更新进度
+    pub fn update_progress(&mut self, current_file: usize, filename: &str) {
+        if let Some(ref mut task) = self.current_task {
+            task.current_file = current_file;
+            task.current_filename = filename.to_string();
+            task.progress = if task.total_files > 0 {
+                current_file as f32 / task.total_files as f32
+            } else {
+                0.0
+            };
+
+            // 计算处理速度和预计剩余时间
+            if let Some(start_time) = task.start_time {
+                let elapsed = start_time.elapsed().unwrap_or_default();
+                if elapsed.as_secs() > 0 && current_file > 0 {
+                    task.processing_speed = Some(current_file as f32 / elapsed.as_secs_f32());
+                    if let Some(speed) = task.processing_speed {
+                        let remaining_files = task.total_files - current_file;
+                        task.estimated_remaining = Some((remaining_files as f32 / speed) as u64);
+                    }
+                }
+            }
+        }
+    }
+
+    /// 完成任务
+    pub fn complete_task(&mut self) {
+        if let Some(mut task) = self.current_task.take() {
+            task.status = TaskStatus::Completed;
+            task.progress = 1.0;
+            self.task_history.push(task);
+        }
+        self.show_progress = false;
+        self.can_cancel = false;
+    }
+
+    /// 任务失败
+    pub fn fail_task(&mut self, error: String) {
+        if let Some(mut task) = self.current_task.take() {
+            task.status = TaskStatus::Failed(error);
+            self.task_history.push(task);
+        }
+        self.show_progress = false;
+        self.can_cancel = false;
+    }
+
+    /// 取消任务
+    pub fn cancel_task(&mut self) {
+        if let Some(mut task) = self.current_task.take() {
+            task.status = TaskStatus::Cancelled;
+            self.task_history.push(task);
+        }
+        self.show_progress = false;
+        self.can_cancel = false;
+    }
+
+    /// 获取当前进度
+    pub fn get_current_progress(&self) -> Option<&ProgressInfo> {
+        self.current_task.as_ref()
+    }
+}
+
 impl Default for ExportSettings {
     fn default() -> Self {
         Self {
@@ -200,6 +362,9 @@ pub struct AppState {
     pub show_audio_decrypt_result: bool,
     /// 是否执行音频解密
     pub should_decrypt_audio: bool,
+    /// 任务管理器
+    #[serde(skip)]
+    pub task_manager: TaskManager,
 }
 
 
@@ -268,6 +433,7 @@ impl Default for AppState {
             audio_decrypt_result: None,
             show_audio_decrypt_result: false,
             should_decrypt_audio: false,
+            task_manager: TaskManager::default(),
         }
     }
 }
