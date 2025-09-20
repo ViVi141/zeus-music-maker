@@ -6,6 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::models::{ProjectSettings, Track};
+use crate::embedded::EMBEDDED_RESOURCES;
 
 /// 模板数据
 #[derive(Debug, Serialize)]
@@ -51,20 +52,23 @@ impl TemplateEngine {
 
     /// 注册所有模板
     fn register_templates(handlebars: &mut Handlebars) -> Result<()> {
-        // config.cpp 模板
-        let config_template = include_str!("../templates/config.txt");
+        // 从嵌入资源获取config.cpp模板
+        let config_template = EMBEDDED_RESOURCES.get_template("config")
+            .ok_or_else(|| anyhow::anyhow!("Failed to get embedded config template"))?;
         handlebars
             .register_template_string("config", config_template)
             .context("注册config模板失败")?;
 
-        // mod.cpp 模板
-        let mod_template = include_str!("../templates/mod.txt");
+        // 从嵌入资源获取mod.cpp模板
+        let mod_template = EMBEDDED_RESOURCES.get_template("mod")
+            .ok_or_else(|| anyhow::anyhow!("Failed to get embedded mod template"))?;
         handlebars
             .register_template_string("mod", mod_template)
             .context("注册mod模板失败")?;
 
-        // FileListWithMusicTracks.hpp 模板
-        let track_template = include_str!("../templates/FileListWithMusicTracks.txt");
+        // 从嵌入资源获取FileListWithMusicTracks.hpp模板
+        let track_template = EMBEDDED_RESOURCES.get_template("FileListWithMusicTracks")
+            .ok_or_else(|| anyhow::anyhow!("Failed to get embedded track template"))?;
         handlebars
             .register_template_string("track", track_template)
             .context("注册track模板失败")?;

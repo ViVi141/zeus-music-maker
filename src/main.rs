@@ -1,9 +1,6 @@
 /*!
  * 宙斯音乐制作器
  * by ViVi141
- * 
- * 用于创建Arma 3音乐模组的增强版工具
- * http://zeusmissiongen.com/
  */
 
 use eframe::egui;
@@ -18,10 +15,13 @@ mod audio_decrypt;
 mod templates;
 mod ui;
 mod threading;
+mod embedded;
 
 use app::ZeusMusicApp;
 
 fn main() -> Result<(), eframe::Error> {
+    // 设置日志级别，减少控制台输出
+    std::env::set_var("RUST_LOG", "warn");
     env_logger::init();
     
     info!("启动宙斯音乐制作器");
@@ -118,7 +118,23 @@ fn create_basic_chinese_font() -> egui::FontData {
 }
 
 fn load_icon() -> egui::IconData {
-    // 尝试加载应用程序图标 (favicon.ico)
+    use crate::embedded::EMBEDDED_RESOURCES;
+    
+    // 首先尝试从嵌入资源加载图标
+    if let Some(icon_data) = EMBEDDED_RESOURCES.get_app_icon() {
+        if let Ok(image) = image::load_from_memory(&icon_data) {
+            let image = image.into_rgba8();
+            let (width, height) = image.dimensions();
+            let rgba = image.into_raw();
+            return egui::IconData {
+                rgba,
+                width,
+                height,
+            };
+        }
+    }
+    
+    // 尝试从文件系统加载图标（开发时使用）
     if let Ok(image) = image::open("favicon.ico") {
         let image = image.into_rgba8();
         let (width, height) = image.dimensions();

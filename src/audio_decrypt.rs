@@ -6,6 +6,7 @@ use infer::Infer;
 use anyhow::{Result, anyhow};
 use std::ffi::CString;
 use std::os::raw::c_char;
+use crate::embedded::EMBEDDED_RESOURCES;
 
 #[cfg(windows)]
 use libc::c_void;
@@ -33,10 +34,11 @@ impl<'a> KuGouDecoder<'a> {
 
     /// 获取公钥数据
     fn get_pub_key(index: Range<u64>) -> &'static [u8] {
-        // 嵌入的酷狗密钥数据
-        static KGM_KEY_XZ: &[u8] = include_bytes!("../assets/kugou_key.xz");
+        // 从嵌入资源获取酷狗密钥数据
         static KEYS: LazyLock<Vec<u8>> = LazyLock::new(|| {
-            let mut xz_decoder = XzDecoder::new(Bytes::new(KGM_KEY_XZ));
+            let kgm_key_xz = EMBEDDED_RESOURCES.get_kugou_key()
+                .expect("Failed to get embedded KuGou key");
+            let mut xz_decoder = XzDecoder::new(Bytes::new(&kgm_key_xz));
             let mut key = vec![0; (KuGouDecoder::PUB_KEY_LEN / KuGouDecoder::PUB_KEY_LEN_MAGNIFICATION) as usize];
             match xz_decoder.read_exact(&mut key) {
                 Ok(_) => key,
@@ -260,31 +262,12 @@ impl AudioDecryptManager {
     /// 使用libncmdump DLL解密NCM文件
     #[cfg(windows)]
     fn decrypt_ncm_with_dll(input_path: &Path) -> Result<()> {
-        // 尝试多个DLL路径
-        let dll_paths = vec![
-            "libncmdump.dll",  // 当前目录
-            "lib/libncmdump.dll",  // lib文件夹
-            "libncmdump-1.5.0-windows-amd64-msvc/libncmdump.dll",  // 原始文件夹
-        ];
+        // 首先尝试从嵌入资源提取DLL
+        let dll_path = EMBEDDED_RESOURCES.extract_library_to_temp("libncmdump.dll")
+            .ok_or_else(|| anyhow!("Failed to extract embedded libncmdump.dll"))?;
         
-        let mut lib = None;
-        let mut last_error = None;
-        
-        for dll_path in &dll_paths {
-            match unsafe { Library::new(dll_path) } {
-                Ok(l) => {
-                    lib = Some(l);
-                    break;
-                }
-                Err(e) => {
-                    last_error = Some(e);
-                }
-            }
-        }
-        
-        let lib = lib.ok_or_else(|| {
-            anyhow!("Failed to load libncmdump.dll from any path. Last error: {:?}", last_error)
-        })?;
+        let lib = unsafe { Library::new(&dll_path) }
+            .map_err(|e| anyhow!("Failed to load extracted libncmdump.dll: {}", e))?;
         
         // 获取函数指针
         let create_netease_crypt: Symbol<unsafe extern "C" fn(*const c_char) -> *mut c_void> = 

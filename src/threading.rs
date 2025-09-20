@@ -61,6 +61,12 @@ impl ThreadedTaskProcessor {
                 // 检查取消标志
                 if *cancel_flag.lock().unwrap() {
                     info!("音频解密任务被取消");
+                    // 立即发送取消完成消息
+                    let _ = progress_sender.send(TaskMessage::TaskCompleted {
+                        success_count,
+                        error_count,
+                        results: vec!["任务被用户取消".to_string()],
+                    });
                     return;
                 }
 
@@ -150,6 +156,12 @@ impl ThreadedTaskProcessor {
                 // 检查取消标志
                 if *cancel_flag.lock().unwrap() {
                     info!("PAA转换任务被取消");
+                    // 立即发送取消完成消息
+                    let _ = progress_sender.send(TaskMessage::TaskCompleted {
+                        success_count,
+                        error_count,
+                        results: vec!["任务被用户取消".to_string()],
+                    });
                     return;
                 }
 
@@ -213,6 +225,7 @@ impl ThreadedTaskProcessor {
     /// 取消当前任务
     pub fn cancel_task(&self) {
         *self.cancel_flag.lock().unwrap() = true;
+        info!("任务取消信号已发送");
     }
 
     /// 重置取消标志

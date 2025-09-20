@@ -83,7 +83,11 @@ impl eframe::App for ZeusMusicApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        info!("应用程序退出");
+        // 取消所有正在运行的任务
+        self.task_processor.cancel_task();
+        
+        // 立即强制退出，不等待任何清理
+        std::process::exit(0);
     }
 }
 

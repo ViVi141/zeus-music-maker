@@ -15,6 +15,9 @@ egui_plot = "0.26.2"
 # Chinese font support
 include_dir = "0.7"
 
+# 嵌入资源文件
+rust-embed = "8.3"
+
 # File operations
 walkdir = "2.4"
 dirs = "5.0"
@@ -60,14 +63,40 @@ aes = "0.8"
 base64 = "0.21"
 hex = "0.4"
 
+# Threading and async support
+tokio = { version = "1.0", features = ["full"] }
+crossbeam-channel = "0.5"
+
 # Windows DLL support
 [target.'cfg(windows)'.dependencies]
 libc = "0.2"
 libloading = "0.8"
+winapi = { version = "0.3", features = ["wincon", "winuser"] }
 
-# Threading and async support
-tokio = { version = "1.0", features = ["full"] }
-crossbeam-channel = "0.5"
+# Windows资源处理
+[build-dependencies]
+winres = "0.1"
+
+# 构建优化配置
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Windows链接器参数 - 设置为Windows应用程序而不是控制台应用程序
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-C", "link-arg=/SUBSYSTEM:WINDOWS",
+    "-C", "link-arg=/ENTRY:mainCRTStartup",
+    "-C", "link-arg=/MACHINE:X64"
+]
+
+# Windows特定配置
+[[bin]]
+name = "zeus-music-maker"
+path = "src/main.rs"
 
 
 [dev-dependencies]
