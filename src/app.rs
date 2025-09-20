@@ -83,8 +83,36 @@ impl eframe::App for ZeusMusicApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        // 取消所有正在运行的任务
+        // 立即取消所有正在运行的任务
         self.task_processor.cancel_task();
+        
+        // 不等待任何清理，直接强制退出
+        info!("程序正在强制退出...");
+        
+        // 使用最激进的退出方式
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            
+            // 方法1：使用taskkill强制终止进程
+            let pid = std::process::id();
+            let _ = std::thread::spawn(move || {
+                let _ = Command::new("taskkill")
+                    .args(&["/F", "/PID", &pid.to_string()])
+                    .spawn();
+            });
+            
+            // 方法2：使用Windows API直接终止进程（备用方案）
+            unsafe {
+                use winapi::um::processthreadsapi::GetCurrentProcess;
+                use winapi::um::processthreadsapi::TerminateProcess;
+                use winapi::um::handleapi::CloseHandle;
+                
+                let handle = GetCurrentProcess();
+                TerminateProcess(handle, 1);
+                CloseHandle(handle);
+            }
+        }
         
         // 立即强制退出，不等待任何清理
         std::process::exit(0);

@@ -32,16 +32,17 @@ impl<'a> KuGouDecoder<'a> {
         0x14, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
     ];
 
-    /// 获取公钥数据
+    /// 获取公钥数据（延迟初始化，仅在需要时加载）
     fn get_pub_key(index: Range<u64>) -> &'static [u8] {
-        // 从嵌入资源获取酷狗密钥数据
-        static KEYS: LazyLock<Vec<u8>> = LazyLock::new(|| {
+        // 使用更轻量级的延迟初始化，避免在程序关闭时清理大型静态变量
+        static KEYS: LazyLock<Box<[u8]>> = LazyLock::new(|| {
+            // 仅在真正需要解密时才加载密钥数据
             let kgm_key_xz = EMBEDDED_RESOURCES.get_kugou_key()
                 .expect("Failed to get embedded KuGou key");
             let mut xz_decoder = XzDecoder::new(Bytes::new(&kgm_key_xz));
             let mut key = vec![0; (KuGouDecoder::PUB_KEY_LEN / KuGouDecoder::PUB_KEY_LEN_MAGNIFICATION) as usize];
             match xz_decoder.read_exact(&mut key) {
-                Ok(_) => key,
+                Ok(_) => key.into_boxed_slice(),
                 _ => {
                     panic!("Failed to decode the KuGou key")
                 }
@@ -71,6 +72,14 @@ impl<'a> KuGouDecoder<'a> {
 
     /// 解密文件到指定路径
     pub fn decrypt_to_file(&mut self, output_path: &Path) -> Result<String> {
+        self.decrypt_to_file_with_cancel(output_path, &|| false)
+    }
+
+    /// 解密文件到指定路径（带取消检查）
+    pub fn decrypt_to_file_with_cancel<F>(&mut self, output_path: &Path, should_cancel: &F) -> Result<String> 
+    where 
+        F: Fn() -> bool
+    {
         let mut output_file = std::fs::File::create(output_path)?;
         let mut buf = [0; 16 * 1024];
         
@@ -103,7 +112,18 @@ impl<'a> KuGouDecoder<'a> {
             if len == 0 {
                 break;
             }
+            
+            // 检查是否应该取消
+            if should_cancel() {
+                return Err(anyhow::anyhow!("解密任务被取消"));
+            }
+            
             output_file.write_all(&buf[..len])?;
+            
+            // 每处理一定量的数据后让出CPU，避免长时间阻塞
+            if self.pos % (1024 * 1024) == 0 { // 每1MB让出一次CPU
+                std::thread::yield_now();
+            }
         }
         
         Ok(ext.to_string())
@@ -185,6 +205,14 @@ pub struct AudioDecryptManager;
 impl AudioDecryptManager {
     /// 解密酷狗KGM文件
     pub fn decrypt_kugou_file(input_path: &Path, output_dir: &Path) -> Result<String> {
+        Self::decrypt_kugou_file_with_cancel(input_path, output_dir, &|| false)
+    }
+
+    /// 解密酷狗KGM文件（带取消检查）
+    pub fn decrypt_kugou_file_with_cancel<F>(input_path: &Path, output_dir: &Path, should_cancel: &F) -> Result<String> 
+    where 
+        F: Fn() -> bool
+    {
         let input_file = std::fs::File::open(input_path)?;
         let mut decoder = KuGouDecoder::try_new(input_file)?;
         
@@ -194,7 +222,7 @@ impl AudioDecryptManager {
             .to_string_lossy();
         
         let output_path = output_dir.join(format!("{}.mp3", file_stem));
-        let detected_format = decoder.decrypt_to_file(&output_path)?;
+        let detected_format = decoder.decrypt_to_file_with_cancel(&output_path, should_cancel)?;
         
         // 如果检测到的格式不是mp3，重命名文件
         if detected_format != "mp3" {

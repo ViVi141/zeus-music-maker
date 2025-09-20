@@ -1,6 +1,6 @@
 [package]
 name = "zeus-music-maker"
-version = "1.0.0"
+version = "1.2.0"
 edition = "2021"
 authors = ["ViVi141 <747384120@qq.com>"]
 description = "宙斯音乐制作器 - 用于自动生成Arma 3音乐模组文件结构的增强版工具"
@@ -71,7 +71,7 @@ crossbeam-channel = "0.5"
 [target.'cfg(windows)'.dependencies]
 libc = "0.2"
 libloading = "0.8"
-winapi = { version = "0.3", features = ["wincon", "winuser"] }
+winapi = { version = "0.3", features = ["wincon", "winuser", "processthreadsapi", "handleapi"] }
 
 # Windows资源处理
 [build-dependencies]
@@ -84,6 +84,20 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# 生产环境专用配置
+[profile.production]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+# 调试配置也进行优化，减少关闭时的清理时间
+[profile.dev]
+opt-level = 1
+debug = 1
 
 # Windows链接器参数 - 设置为Windows应用程序而不是控制台应用程序
 [target.x86_64-pc-windows-msvc]

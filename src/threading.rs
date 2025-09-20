@@ -85,8 +85,9 @@ impl ThreadedTaskProcessor {
                 }
 
                 // 处理文件
+                let cancel_check = || *cancel_flag.lock().unwrap();
                 let result = if AudioDecryptManager::is_kugou_file(input_path) {
-                    match AudioDecryptManager::decrypt_kugou_file(input_path, &output_dir) {
+                    match AudioDecryptManager::decrypt_kugou_file_with_cancel(input_path, &output_dir, &cancel_check) {
                         Ok(output_path) => {
                             success_count += 1;
                             Ok(format!("酷狗: {} -> {}", 
@@ -226,6 +227,25 @@ impl ThreadedTaskProcessor {
     pub fn cancel_task(&self) {
         *self.cancel_flag.lock().unwrap() = true;
         info!("任务取消信号已发送");
+    }
+
+    /// 等待所有任务完成（用于优雅关闭）
+    pub fn wait_for_completion(&self, timeout_ms: u64) -> bool {
+        let start_time = std::time::Instant::now();
+        let timeout = std::time::Duration::from_millis(timeout_ms);
+        
+        while start_time.elapsed() < timeout {
+            // 检查是否还有未完成的任务
+            if let Ok(_) = self.progress_receiver.try_recv() {
+                // 还有消息在处理，继续等待
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            } else {
+                // 没有更多消息，任务可能已完成
+                break;
+            }
+        }
+        
+        start_time.elapsed() < timeout
     }
 
     /// 重置取消标志

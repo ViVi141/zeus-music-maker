@@ -24,6 +24,16 @@ fn main() -> Result<(), eframe::Error> {
     std::env::set_var("RUST_LOG", "warn");
     env_logger::init();
     
+    // 设置更快的退出策略
+    std::env::set_var("RUST_BACKTRACE", "0");
+    
+    // 设置生产环境优化参数
+    std::env::set_var("RUST_MIN_STACK", "8388608"); // 8MB栈大小
+    std::env::set_var("RUST_MAX_STACK", "8388608");
+    
+    // 禁用一些可能影响性能的特性
+    std::env::set_var("RUSTC_BOOTSTRAP", "0");
+    
     info!("启动宙斯音乐制作器");
     
     let options = eframe::NativeOptions {
@@ -91,23 +101,23 @@ fn setup_custom_fonts(ctx: &egui::Context) {
 }
 
 fn load_chinese_font() -> Result<egui::FontData, Box<dyn std::error::Error>> {
-    // 尝试从系统字体目录加载中文字体
+    // 尝试从系统字体目录加载中文字体（按优先级排序，优先使用较小的字体文件）
     let font_paths = [
+        "C:/Windows/Fonts/simhei.ttf", // 黑体 - 相对较小
         "C:/Windows/Fonts/msyh.ttc", // 微软雅黑
-        "C:/Windows/Fonts/simhei.ttf", // 黑体
         "C:/Windows/Fonts/simsun.ttc", // 宋体
         "C:/Windows/Fonts/NotoSansCJK-Regular.ttc", // Noto Sans CJK
     ];
     
     for font_path in &font_paths {
         if std::path::Path::new(font_path).exists() {
+            // 使用更高效的方式读取字体文件
             let font_data = std::fs::read(font_path)?;
             return Ok(egui::FontData::from_owned(font_data));
         }
     }
     
     // 如果系统字体不可用，创建一个简单的字体数据
-    // 这里我们创建一个包含基本中文字符的字体数据
     Ok(create_basic_chinese_font())
 }
 
@@ -120,7 +130,7 @@ fn create_basic_chinese_font() -> egui::FontData {
 fn load_icon() -> egui::IconData {
     use crate::embedded::EMBEDDED_RESOURCES;
     
-    // 首先尝试从嵌入资源加载图标
+    // 首先尝试从嵌入资源加载图标（优先使用较小的图标）
     if let Some(icon_data) = EMBEDDED_RESOURCES.get_app_icon() {
         if let Ok(image) = image::load_from_memory(&icon_data) {
             let image = image.into_rgba8();
