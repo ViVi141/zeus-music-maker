@@ -38,7 +38,13 @@
 ```bash
 git clone https://github.com/ViVi141/zeus-music-maker.git
 cd zeus-music-maker
-cargo build --release
+cargo build
+```
+
+或者使用构建脚本：
+```bash
+# Windows
+build.bat
 ```
 
 ## 📋 使用指南
