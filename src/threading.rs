@@ -6,6 +6,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use crate::audio_decrypt::AudioDecryptManager;
 use crate::paa_converter::{PaaConverter, PaaOptions};
+use crate::audio_converter::AudioConverter;
+use crate::ffmpeg_downloader::FFmpegDownloader;
 
 /// 任务消息
 #[derive(Debug, Clone)]
@@ -20,6 +22,16 @@ pub enum TaskMessage {
         success_count: usize,
         error_count: usize,
         results: Vec<String>,
+    },
+    /// FFmpeg下载进度更新
+    FFmpegDownloadProgress {
+        progress: f64,
+        status: String,
+    },
+    /// FFmpeg下载完成
+    FFmpegDownloadCompleted {
+        success: bool,
+        message: String,
     },
 }
 
@@ -217,6 +229,168 @@ impl ThreadedTaskProcessor {
         Ok(())
     }
 
+    /// 处理音频格式转换任务
+    pub fn process_audio_convert(
+        &self,
+        files: Vec<PathBuf>,
+        output_dir: PathBuf,
+    ) -> Result<()> {
+        let progress_sender = self.progress_sender.clone();
+        let cancel_flag = self.cancel_flag.clone();
+
+        thread::spawn(move || {
+            let _rt = tokio::runtime::Runtime::new().unwrap();
+            let mut success_count = 0;
+            let mut error_count = 0;
+            let mut results = Vec::new();
+            
+            // 尝试创建转换器，如果失败则提示下载
+            let converter = match AudioConverter::new() {
+                Ok(conv) => conv,
+                Err(e) => {
+                    warn!("FFmpeg 未找到: {}", e);
+                    let _ = progress_sender.send(TaskMessage::TaskCompleted {
+                        success_count: 0,
+                        error_count: files.len(),
+                        results: vec![format!("FFmpeg 未找到: {}\n\n请使用软件的自动下载功能或手动安装 FFmpeg", e)],
+                    });
+                    return;
+                }
+            };
+
+            for (i, input_path) in files.iter().enumerate() {
+                // 检查取消标志
+                if *cancel_flag.lock().unwrap() {
+                    info!("音频转换任务被取消");
+                    let _ = progress_sender.send(TaskMessage::TaskCompleted {
+                        success_count,
+                        error_count,
+                        results: vec!["任务被用户取消".to_string()],
+                    });
+                    return;
+                }
+
+                // 发送进度更新
+                let filename = input_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                
+                if let Err(e) = progress_sender.send(TaskMessage::UpdateProgress {
+                    current_file: i,
+                    filename: filename.clone(),
+                }) {
+                    warn!("发送进度更新失败: {}", e);
+                }
+
+                // 生成输出路径
+                if let Some(file_stem) = input_path.file_stem() {
+                    let output_path = output_dir.join(format!("{}.ogg", file_stem.to_string_lossy()));
+                    
+                    // 执行转换
+                    let cancel_check = || *cancel_flag.lock().unwrap();
+                    match converter.convert_to_ogg_with_cancel(input_path, &output_path, &cancel_check) {
+                        Ok(_) => {
+                            success_count += 1;
+                            results.push(format!("转换成功: {} -> {}.ogg", filename, file_stem.to_string_lossy()));
+                            info!("音频转换成功: {:?}", output_path);
+                        }
+                        Err(e) => {
+                            error_count += 1;
+                            results.push(format!("转换失败: {} - {}", filename, e));
+                            warn!("音频转换失败: {:?} - {}", input_path, e);
+                        }
+                    }
+                } else {
+                    error_count += 1;
+                    results.push(format!("转换失败: {} - 无法获取文件名", filename));
+                }
+            }
+
+            // 发送完成消息
+            if let Err(e) = progress_sender.send(TaskMessage::TaskCompleted {
+                success_count,
+                error_count,
+                results,
+            }) {
+                warn!("发送任务完成消息失败: {}", e);
+            }
+        });
+
+        Ok(())
+    }
+
+    /// 处理 FFmpeg 下载任务
+    pub fn process_ffmpeg_download(&self) -> Result<()> {
+        let progress_sender = self.progress_sender.clone();
+        let cancel_flag = self.cancel_flag.clone();
+
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            
+            // 发送初始进度
+            let _ = progress_sender.send(TaskMessage::FFmpegDownloadProgress {
+                progress: 0.0,
+                status: "准备下载 FFmpeg...".to_string(),
+            });
+
+            // 创建下载器
+                    let downloader = match FFmpegDownloader::new_user_workspace_with_fallback() {
+                Ok(downloader) => downloader,
+                Err(e) => {
+                    let _ = progress_sender.send(TaskMessage::FFmpegDownloadCompleted {
+                        success: false,
+                        message: format!("创建下载器失败: {}", e),
+                    });
+                    return;
+                }
+            };
+
+            // 执行下载
+            let result = rt.block_on(async {
+                downloader.download_ffmpeg_with_fallback(|progress, status| {
+                    // 检查取消标志
+                    if *cancel_flag.lock().unwrap() {
+                        return Err(anyhow::anyhow!("下载被取消"));
+                    }
+
+                    // 发送进度更新
+                    if let Err(e) = progress_sender.send(TaskMessage::FFmpegDownloadProgress {
+                        progress,
+                        status: status.to_string(),
+                    }) {
+                        warn!("发送下载进度失败: {}", e);
+                    }
+
+                    Ok(())
+                }).await
+            });
+
+            // 发送完成消息
+            match result {
+                Ok(ffmpeg_path) => {
+                    // 保存路径配置
+                    if let Err(e) = FFmpegDownloader::save_ffmpeg_path(&ffmpeg_path) {
+                        warn!("保存 FFmpeg 路径失败: {}", e);
+                    }
+
+                    let _ = progress_sender.send(TaskMessage::FFmpegDownloadCompleted {
+                        success: true,
+                        message: format!("FFmpeg 下载成功！\n路径: {}", ffmpeg_path.display()),
+                    });
+                }
+                Err(e) => {
+                    let _ = progress_sender.send(TaskMessage::FFmpegDownloadCompleted {
+                        success: false,
+                        message: format!("FFmpeg 下载失败: {}", e),
+                    });
+                }
+            }
+        });
+
+        Ok(())
+    }
 
     /// 获取进度接收器
     pub fn get_progress_receiver(&self) -> &Receiver<TaskMessage> {

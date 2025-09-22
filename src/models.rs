@@ -142,6 +142,7 @@ pub enum TaskType {
     PaaConvert,
     ModExport,
     AudioLoad,
+    AudioConvert,
 }
 
 /// 任务状态
@@ -295,6 +296,13 @@ impl TaskManager {
     pub fn get_current_progress(&self) -> Option<&ProgressInfo> {
         self.current_task.as_ref()
     }
+    
+    /// 检查是否有任务正在运行
+    pub fn is_running(&self) -> bool {
+        self.current_task.as_ref()
+            .map(|task| task.status == TaskStatus::Running)
+            .unwrap_or(false)
+    }
 
 }
 
@@ -363,6 +371,34 @@ pub struct AppState {
     pub show_audio_decrypt_result: bool,
     /// 是否执行音频解密
     pub should_decrypt_audio: bool,
+    /// 是否显示音频转换对话框
+    pub show_audio_converter: bool,
+    /// 音频转换选中的文件
+    pub audio_convert_selected_files: Vec<std::path::PathBuf>,
+    /// 音频转换输出目录
+    pub audio_convert_output_directory: Option<std::path::PathBuf>,
+    /// 音频转换结果
+    pub audio_convert_result: Option<String>,
+    /// 是否显示音频转换结果对话框
+    pub show_audio_convert_result: bool,
+    /// 是否执行音频转换
+    pub should_convert_audio: bool,
+    /// 是否显示FFmpeg下载对话框
+    pub show_ffmpeg_download: bool,
+    /// FFmpeg下载进度 (0.0-100.0)
+    pub ffmpeg_download_progress: f64,
+    /// FFmpeg下载状态消息
+    pub ffmpeg_download_status: String,
+    /// 是否正在下载FFmpeg
+    pub is_downloading_ffmpeg: bool,
+    /// 是否已经启动了下载任务
+    pub ffmpeg_download_started: bool,
+    /// 手动选择的FFmpeg路径
+    pub manual_ffmpeg_path: Option<std::path::PathBuf>,
+    /// 是否显示手动路径选择对话框
+    pub show_manual_path_selection: bool,
+    /// 文件操作提示信息
+    pub file_operation_message: Option<String>,
     /// 任务管理器
     #[serde(skip)]
     pub task_manager: TaskManager,
@@ -370,9 +406,45 @@ pub struct AppState {
 
 
 impl AppState {
-    /// 添加轨道
-    pub fn add_track(&mut self, track: Track) {
+
+    /// 防重复添加轨道（基于文件路径）
+    pub fn add_track_with_duplicate_check(&mut self, track: Track) -> bool {
+        // 检查是否已存在相同路径的轨道
+        if self.tracks.iter().any(|t| t.path == track.path) {
+            return false; // 重复，未添加
+        }
         self.tracks.push(track);
+        true // 成功添加
+    }
+
+    /// 批量添加轨道（带重复检测）
+    pub fn add_tracks_with_duplicate_check(&mut self, tracks: Vec<Track>) -> (usize, usize) {
+        let mut added_count = 0;
+        let mut duplicate_count = 0;
+        
+        for track in tracks {
+            if self.add_track_with_duplicate_check(track) {
+                added_count += 1;
+            } else {
+                duplicate_count += 1;
+            }
+        }
+        
+        (added_count, duplicate_count)
+    }
+
+    /// 获取轨道重复统计信息
+    pub fn get_track_duplicate_info(&self) -> String {
+        let total_tracks = self.tracks.len();
+        let unique_paths: std::collections::HashSet<_> = self.tracks.iter().map(|t| &t.path).collect();
+        let unique_count = unique_paths.len();
+        let duplicate_count = total_tracks - unique_count;
+        
+        if duplicate_count > 0 {
+            format!("⚠️ 总轨道数: {} (其中 {} 个重复)", total_tracks, duplicate_count)
+        } else {
+            format!("总轨道数: {}", total_tracks)
+        }
     }
 
     /// 移除选中的轨道
@@ -403,6 +475,10 @@ impl AppState {
     pub fn track_count(&self) -> usize {
         self.tracks.len()
     }
+    
+    
+    
+    
 }
 
 impl Default for AppState {
@@ -434,6 +510,20 @@ impl Default for AppState {
             audio_decrypt_result: None,
             show_audio_decrypt_result: false,
             should_decrypt_audio: false,
+            show_audio_converter: false,
+            audio_convert_selected_files: Vec::new(),
+            audio_convert_output_directory: None,
+            audio_convert_result: None,
+            show_audio_convert_result: false,
+            should_convert_audio: false,
+            show_ffmpeg_download: false,
+            ffmpeg_download_progress: 0.0,
+            ffmpeg_download_status: String::new(),
+            is_downloading_ffmpeg: false,
+            ffmpeg_download_started: false,
+            manual_ffmpeg_path: None,
+            show_manual_path_selection: false,
+            file_operation_message: None,
             task_manager: TaskManager::default(),
         }
     }

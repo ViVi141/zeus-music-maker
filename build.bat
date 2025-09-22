@@ -1,5 +1,5 @@
 @echo off
-echo 正在构建宙斯音乐制作器优化版本...
+echo 正在构建宙斯音乐制作器版本...
 echo.
 
 REM 设置生产环境变量
@@ -15,6 +15,15 @@ if not exist "favicon.ico" (
     echo 请确保图标文件存在于项目根目录。
     pause
     exit /b 1
+)
+
+REM 检查 FFmpeg（可选）
+if not exist "ffmpeg\ffmpeg.exe" (
+    echo 警告：找不到 FFmpeg 可执行文件！
+    echo 音频格式转换功能可能不可用。
+    echo 请下载 FFmpeg 并放置到 ffmpeg\ 目录中。
+    echo 详情请查看 ffmpeg\README.txt
+    echo.
 )
 
 REM 清理之前的构建
@@ -40,7 +49,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM 构建优化版本
-echo 开始构建优化版本...
+echo 开始构建版本...
 cargo build --release
 
 if %ERRORLEVEL% neq 0 (
@@ -60,7 +69,7 @@ for %%I in (target\release\zeus-music-maker.exe) do echo 文件大小: %%~zI 字
 REM 复制到根目录
 copy target\release\zeus-music-maker.exe .\zeus-music-maker-optimized.exe
 echo.
-echo 优化版本已复制为: zeus-music-maker-optimized.exe
+echo 版本已复制为: zeus-music-maker-optimized.exe
 
 REM 验证构建结果
 echo.
@@ -69,13 +78,7 @@ if exist "target\release\zeus-music-maker.exe" (
     echo ✓ 可执行文件已生成
     echo ✓ 代码质量检查通过
     echo ✓ 测试全部通过
-    echo ✓ 优化版本构建完成！
-    echo.
-    echo 这个版本经过了全面优化，包括：
-    echo   - 代码结构优化
-    echo   - 错误处理改进
-    echo   - 性能优化
-    echo   - 代码质量提升
+    echo ✓ 版本构建完成！
 ) else (
     echo ✗ 构建失败：找不到可执行文件
 )

@@ -1,6 +1,6 @@
 [package]
 name = "zeus-music-maker"
-version = "1.2.0"
+version = "2.0.0"
 edition = "2021"
 authors = ["ViVi141 <747384120@qq.com>"]
 description = "宙斯音乐制作器 - 用于自动生成Arma 3音乐模组文件结构的增强版工具"
@@ -66,6 +66,11 @@ hex = "0.4"
 # Threading and async support
 tokio = { version = "1.0", features = ["full"] }
 crossbeam-channel = "0.5"
+
+# HTTP client for downloading FFmpeg
+reqwest = { version = "0.11", features = ["json", "stream"] }
+indicatif = "0.17"
+zip = "0.6"
 
 # Windows DLL support
 [target.'cfg(windows)'.dependencies]

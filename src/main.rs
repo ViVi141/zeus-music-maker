@@ -12,6 +12,8 @@ mod audio;
 mod file_ops;
 mod paa_converter;
 mod audio_decrypt;
+mod audio_converter;
+mod ffmpeg_downloader;
 mod templates;
 mod ui;
 mod threading;
@@ -45,6 +47,8 @@ fn main() -> Result<(), eframe::Error> {
             .with_decorations(true)
             .with_transparent(false)
             .with_icon(load_icon()),
+        // 启用持续渲染，确保在有任务运行时UI持续更新
+        renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
     

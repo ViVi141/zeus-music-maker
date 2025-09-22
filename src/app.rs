@@ -44,23 +44,15 @@ impl eframe::App for ZeusMusicApp {
                     ui.label(format!("作者: {}", self.state.project.author_name));
                     ui.separator();
                     ui.label(format!("轨道数: {}", self.state.track_count()));
-                    ui.separator();
-                    
-                    // 显示运行时间
-                    let uptime = self.get_uptime();
-                    let uptime_text = if uptime.as_secs() < 60 {
-                        format!("运行时间: {}秒", uptime.as_secs())
-                    } else if uptime.as_secs() < 3600 {
-                        format!("运行时间: {}分{}秒", uptime.as_secs() / 60, uptime.as_secs() % 60)
-                    } else {
-                        let hours = uptime.as_secs() / 3600;
-                        let minutes = (uptime.as_secs() % 3600) / 60;
-                        format!("运行时间: {}小时{}分", hours, minutes)
-                    };
-                    ui.label(uptime_text);
                 });
 
                 ui.add_space(10.0);
+
+                // 显示文件操作提示信息
+                if let Some(ref message) = self.state.file_operation_message {
+                    ui.colored_label(egui::Color32::from_rgb(0, 150, 0), message);
+                    ui.add_space(5.0);
+                }
 
                 // 显示轨道列表
                 UIComponents::render_track_list(ui, &mut self.state);
@@ -78,7 +70,8 @@ impl eframe::App for ZeusMusicApp {
         // 显示对话框
         UIComponents::show_project_settings_dialog(ctx, &mut self.state);
         UIComponents::show_export_dialog(ctx, &mut self.state);
-        UIComponents::show_about_dialog(ctx, &mut self.state);
+        let uptime = self.get_uptime();
+        UIComponents::show_about_dialog(ctx, &mut self.state, uptime);
         UIComponents::show_track_editor_dialog(ctx, &mut self.state);
         UIComponents::show_paa_converter_dialog(ctx, &mut self.state, Some(&mut self.task_processor));
         UIComponents::show_preview_dialog(ctx, &mut self.state);
@@ -87,6 +80,10 @@ impl eframe::App for ZeusMusicApp {
         UIComponents::show_paa_result_dialog(ctx, &mut self.state);
         UIComponents::show_audio_decrypt_dialog(ctx, &mut self.state);
         UIComponents::show_audio_decrypt_result_dialog(ctx, &mut self.state);
+        UIComponents::show_audio_converter_dialog(ctx, &mut self.state);
+        UIComponents::show_audio_convert_result_dialog(ctx, &mut self.state);
+        UIComponents::show_ffmpeg_download_dialog(ctx, &mut self.state);
+        UIComponents::show_manual_path_selection_dialog(ctx, &mut self.state);
         UIComponents::show_progress_dialog(ctx, &mut self.state, &mut self.task_processor);
         
         // 检查是否需要执行音频解密
@@ -98,6 +95,29 @@ impl eframe::App for ZeusMusicApp {
             }
             self.state.should_decrypt_audio = false;
             self.state.show_audio_decrypt = false;
+        }
+        
+        // 检查是否需要执行音频转换
+        if self.state.should_convert_audio {
+            if let Some(ref output_dir) = self.state.audio_convert_output_directory {
+                let output_dir = output_dir.clone();
+                let selected_files = self.state.audio_convert_selected_files.clone();
+                self.start_audio_convert_task(selected_files, output_dir);
+            }
+            self.state.should_convert_audio = false;
+            self.state.show_audio_converter = false;
+        }
+        
+        // 检查是否需要下载 FFmpeg
+        if self.state.is_downloading_ffmpeg && !self.state.ffmpeg_download_started {
+            self.start_ffmpeg_download_task();
+        }
+        
+        // 如果有任务正在运行，请求持续重绘以确保UI实时更新
+        if self.state.task_manager.is_running() || 
+           self.state.is_downloading_ffmpeg || 
+           self.state.task_manager.show_progress {
+            ctx.request_repaint();
         }
     }
 
@@ -137,6 +157,31 @@ impl ZeusMusicApp {
                         self.state.task_manager.update_progress(current_file, &filename);
                     }
                 }
+                TaskMessage::FFmpegDownloadProgress { progress, status } => {
+                    self.state.ffmpeg_download_progress = progress;
+                    // 添加调试日志
+                    log::info!("FFmpeg 下载进度更新: {:.1}% - {}", progress, status);
+                    self.state.ffmpeg_download_status = status;
+                    // 注意：这里不能直接调用 ctx.request_repaint()，因为 ctx 不在作用域内
+                    // egui 会在下一帧自动重绘，所以进度更新应该能正常显示
+                }
+                TaskMessage::FFmpegDownloadCompleted { success, message } => {
+                    // 下载完成，重置所有下载相关标志
+                    self.state.is_downloading_ffmpeg = false;
+                    self.state.ffmpeg_download_started = false;
+                    self.state.ffmpeg_download_progress = if success { 100.0 } else { 0.0 };
+                    
+                    if success {
+                        self.state.ffmpeg_download_status = "下载完成！".to_string();
+                        self.state.audio_convert_result = Some(message);
+                        self.state.show_audio_convert_result = true;
+                        // 不立即关闭下载对话框，让用户看到完成状态
+                    } else {
+                        self.state.ffmpeg_download_status = "下载失败！".to_string();
+                        self.state.audio_convert_result = Some(message);
+                        self.state.show_audio_convert_result = true;
+                    }
+                }
                 TaskMessage::TaskCompleted { success_count, error_count, results } => {
                     self.state.task_manager.complete_task();
                     
@@ -161,6 +206,15 @@ impl ZeusMusicApp {
                                 ));
                                 self.state.show_paa_result = true;
                             }
+                            crate::models::TaskType::AudioConvert => {
+                                self.state.audio_convert_result = Some(format!(
+                                    "音频转换完成！\n\n成功: {}\n失败: {}\n\n详细结果:\n{}",
+                                    success_count,
+                                    error_count,
+                                    results.join("\n")
+                                ));
+                                self.state.show_audio_convert_result = true;
+                            }
                             _ => {}
                         }
                     }
@@ -176,6 +230,32 @@ impl ZeusMusicApp {
         
         if let Err(e) = self.task_processor.process_audio_decrypt(files, output_dir) {
             self.state.task_manager.fail_task(format!("启动音频解密任务失败: {}", e));
+        }
+    }
+
+    /// 开始音频转换任务
+    pub fn start_audio_convert_task(&mut self, files: Vec<std::path::PathBuf>, output_dir: std::path::PathBuf) {
+        self.state.task_manager.start_task(crate::models::TaskType::AudioConvert, files.len());
+        self.task_processor.reset_cancel_flag();
+        
+        if let Err(e) = self.task_processor.process_audio_convert(files, output_dir) {
+            self.state.task_manager.fail_task(format!("启动音频转换任务失败: {}", e));
+        }
+    }
+
+    /// 开始 FFmpeg 下载任务
+    pub fn start_ffmpeg_download_task(&mut self) {
+        // 标记下载任务已启动
+        self.state.ffmpeg_download_started = true;
+        self.task_processor.reset_cancel_flag();
+        
+        if let Err(e) = self.task_processor.process_ffmpeg_download() {
+            // 启动失败时才重置状态
+            self.state.is_downloading_ffmpeg = false;
+            self.state.ffmpeg_download_started = false;
+            self.state.ffmpeg_download_status = format!("启动下载任务失败: {}", e);
+            self.state.audio_convert_result = Some(format!("FFmpeg 下载失败: {}", e));
+            self.state.show_audio_convert_result = true;
         }
     }
 

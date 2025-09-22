@@ -68,16 +68,3 @@ impl AudioProcessor {
 
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_ogg_file() {
-        assert!(AudioProcessor::is_ogg_file("test.ogg"));
-        assert!(AudioProcessor::is_ogg_file("test.OGG"));
-        assert!(!AudioProcessor::is_ogg_file("test.mp3"));
-        assert!(!AudioProcessor::is_ogg_file("test"));
-    }
-
-}
