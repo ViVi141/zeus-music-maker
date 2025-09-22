@@ -7,6 +7,7 @@ use anyhow::{Result, anyhow};
 use std::ffi::CString;
 use std::os::raw::c_char;
 use crate::embedded::EMBEDDED_RESOURCES;
+use crate::utils::constants::audio_decrypt;
 
 #[cfg(windows)]
 use libc::c_void;
@@ -23,14 +24,11 @@ pub struct KuGouDecoder<'a> {
 }
 
 impl<'a> KuGouDecoder<'a> {
-    const HEADER_LEN: u64 = 1024;
-    const OWN_KEY_LEN: u64 = 17;
-    const PUB_KEY_LEN: u64 = 1170494464;
-    const PUB_KEY_LEN_MAGNIFICATION: u64 = 16;
-    const MAGIC_HEADER: [u8; 28] = [
-        0x7c, 0xd5, 0x32, 0xeb, 0x86, 0x02, 0x7f, 0x4b, 0xa8, 0xaf, 0xa6, 0x8e, 0x0f, 0xff, 0x99,
-        0x14, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-    ];
+    const HEADER_LEN: u64 = audio_decrypt::HEADER_LEN;
+    const OWN_KEY_LEN: u64 = audio_decrypt::OWN_KEY_LEN;
+    const PUB_KEY_LEN: u64 = audio_decrypt::PUB_KEY_LEN;
+    const PUB_KEY_LEN_MAGNIFICATION: u64 = audio_decrypt::PUB_KEY_LEN_MAGNIFICATION;
+    const MAGIC_HEADER: [u8; 28] = audio_decrypt::KUGOU_MAGIC_HEADER;
 
     /// 获取公钥数据（延迟初始化，仅在需要时加载）
     fn get_pub_key(index: Range<u64>) -> &'static [u8] {
@@ -70,10 +68,6 @@ impl<'a> KuGouDecoder<'a> {
         }
     }
 
-    /// 解密文件到指定路径
-    pub fn decrypt_to_file(&mut self, output_path: &Path) -> Result<String> {
-        self.decrypt_to_file_with_cancel(output_path, &|| false)
-    }
 
     /// 解密文件到指定路径（带取消检查）
     pub fn decrypt_to_file_with_cancel<F>(&mut self, output_path: &Path, should_cancel: &F) -> Result<String> 
@@ -203,10 +197,6 @@ impl Read for Bytes<'_> {
 pub struct AudioDecryptManager;
 
 impl AudioDecryptManager {
-    /// 解密酷狗KGM文件
-    pub fn decrypt_kugou_file(input_path: &Path, output_dir: &Path) -> Result<String> {
-        Self::decrypt_kugou_file_with_cancel(input_path, output_dir, &|| false)
-    }
 
     /// 解密酷狗KGM文件（带取消检查）
     pub fn decrypt_kugou_file_with_cancel<F>(input_path: &Path, output_dir: &Path, should_cancel: &F) -> Result<String> 

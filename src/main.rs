@@ -16,8 +16,10 @@ mod templates;
 mod ui;
 mod threading;
 mod embedded;
+mod utils;
 
 use app::ZeusMusicApp;
+use crate::utils::constants::app as app_constants;
 
 fn main() -> Result<(), eframe::Error> {
     // 设置日志级别，减少控制台输出
@@ -28,8 +30,8 @@ fn main() -> Result<(), eframe::Error> {
     std::env::set_var("RUST_BACKTRACE", "0");
     
     // 设置生产环境优化参数
-    std::env::set_var("RUST_MIN_STACK", "8388608"); // 8MB栈大小
-    std::env::set_var("RUST_MAX_STACK", "8388608");
+    std::env::set_var("RUST_MIN_STACK", &app_constants::MIN_STACK_SIZE.to_string());
+    std::env::set_var("RUST_MAX_STACK", &app_constants::MAX_STACK_SIZE.to_string());
     
     // 禁用一些可能影响性能的特性
     std::env::set_var("RUSTC_BOOTSTRAP", "0");
@@ -47,7 +49,7 @@ fn main() -> Result<(), eframe::Error> {
     };
     
     eframe::run_native(
-        "宙斯音乐制作器",
+        app_constants::APP_NAME,
         options,
         Box::new(|cc| {
             // 配置字体以支持中文字符

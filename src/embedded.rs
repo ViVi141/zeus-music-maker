@@ -54,26 +54,10 @@ impl EmbeddedResources {
         None
     }
 
-    /// 提取所有必需的库文件
-    pub fn extract_all_libraries(&self) -> Vec<std::path::PathBuf> {
-        let mut extracted_paths = Vec::new();
-        
-        // 提取 libncmdump.dll
-        if let Some(path) = self.extract_library_to_temp("libncmdump.dll") {
-            extracted_paths.push(path);
-        }
-        
-        extracted_paths
-    }
 
     /// 获取酷狗密钥数据
     pub fn get_kugou_key(&self) -> Option<Vec<u8>> {
         self.get_asset("kugou_key.xz")
-    }
-
-    /// 获取默认Logo
-    pub fn get_default_logo(&self) -> Option<Vec<u8>> {
-        self.get_asset("logo.paa")
     }
 
     /// 获取应用图标
@@ -81,10 +65,6 @@ impl EmbeddedResources {
         self.get_asset("zeus_music_maker.png")
     }
 
-    /// 获取Steam Logo
-    pub fn get_steam_logo(&self) -> Option<Vec<u8>> {
-        self.get_asset("zeus_steam_logo.png")
-    }
 }
 
 /// 全局嵌入资源实例

@@ -65,14 +65,6 @@ impl AudioProcessor {
     }
 
 
-    /// 验证音频文件是否为OGG格式
-    pub fn is_ogg_file<P: AsRef<Path>>(path: P) -> bool {
-        path.as_ref()
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|ext| ext.to_lowercase() == "ogg")
-            .unwrap_or(false)
-    }
 
 }
 

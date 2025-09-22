@@ -85,13 +85,6 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
-# Windows链接器参数 - 设置为Windows应用程序而不是控制台应用程序
-[target.x86_64-pc-windows-msvc]
-rustflags = [
-    "-C", "link-arg=/SUBSYSTEM:WINDOWS",
-    "-C", "link-arg=/ENTRY:mainCRTStartup",
-    "-C", "link-arg=/MACHINE:X64"
-]
 
 # Windows特定配置
 [[bin]]

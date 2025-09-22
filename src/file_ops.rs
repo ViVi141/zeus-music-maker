@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
 use log::{debug, info, warn};
-use rfd::FileDialog;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::audio::AudioProcessor;
 use crate::models::{ProjectSettings, Track};
+use crate::utils::{FileUtils, StringUtils};
+use crate::utils::constants::file_ops;
 
 /// 文件操作工具
 pub struct FileOperations;
@@ -13,89 +14,75 @@ pub struct FileOperations;
 impl FileOperations {
     /// 选择音频文件（仅支持OGG格式）
     pub fn select_audio_files() -> Option<Vec<PathBuf>> {
-        FileDialog::new()
-            .add_filter("OGG音频文件", &["ogg"])
-            .set_title("选择OGG音频文件")
-            .pick_files()
+        FileUtils::select_audio_files()
     }
 
     /// 选择Logo文件
     pub fn select_logo_file() -> Option<PathBuf> {
-        FileDialog::new()
-            .add_filter("PAA files", &["paa"])
-            .set_title("选择Logo文件 (.paa)")
-            .pick_file()
+        FileUtils::select_paa_file()
     }
 
     /// 选择PBO文件
     pub fn select_pbo_file() -> Option<PathBuf> {
-        FileDialog::new()
-            .add_filter("PBO files", &["pbo"])
-            .set_title("选择PBO文件")
-            .pick_file()
+        FileUtils::select_pbo_file()
     }
 
 
     /// 选择加密音频文件
     pub fn select_encrypted_audio_files() -> Option<Vec<PathBuf>> {
-        FileDialog::new()
-            .add_filter("所有支持的音频", &["kgm", "ncm"])  // 默认选择所有格式
-            .add_filter("酷狗音乐", &["kgm"])
-            .add_filter("网易云音乐", &["ncm"])
-            .set_title("选择加密音频文件")
-            .pick_files()
+        FileUtils::select_encrypted_audio_files()
     }
 
 
     /// 选择导出目录
     pub fn select_export_directory() -> Option<PathBuf> {
-        FileDialog::new()
-            .set_title("选择导出目录")
-            .pick_folder()
+        FileUtils::select_export_directory()
     }
 
     /// 加载音频文件并创建轨道
     pub fn load_audio_files(paths: Vec<PathBuf>, class_name: &str) -> Result<Vec<Track>> {
         let mut tracks = Vec::new();
 
-        for path in paths {
-            if !path.exists() {
-                warn!("文件不存在: {:?}", path);
+        for (index, path) in paths.iter().enumerate() {
+            // 验证文件
+            if let Err(e) = FileUtils::validate_file(path) {
+                warn!("文件验证失败 {:?}: {}", path, e);
                 continue;
             }
 
             // 验证文件格式（确保是OGG文件）
-            if !AudioProcessor::is_ogg_file(&path) {
-                warn!("文件不是OGG格式: {:?}", path);
+            if !FileUtils::is_supported_audio_file(path) {
+                warn!("文件不是支持的音频格式: {:?}", path);
                 continue;
             }
 
-            // 获取文件名（不含扩展名）并确保只包含ASCII字符
+            // 检查文件大小
+            if let Ok(true) = FileUtils::is_file_too_large(path) {
+                warn!("文件过大，跳过: {:?}", path);
+                continue;
+            }
+
+            // 生成安全的轨道名称
             let track_name = path
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "unknown".to_string())
-                .chars()
-                .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                    c
-                } else {
-                    '_'
-                })
-                .collect::<String>();
+                .unwrap_or_else(|| "unknown".to_string());
+            
+            let safe_track_name = StringUtils::safe_filename(&track_name, index);
 
             // 创建轨道
-            let mut track = Track::new(path.clone(), track_name, class_name.to_string());
+            let mut track = Track::new(path.clone(), safe_track_name, class_name.to_string());
 
             // 获取音频信息
-            match AudioProcessor::get_audio_info(&path) {
+            match AudioProcessor::get_audio_info(path) {
                 Ok(audio_info) => {
-                    track.set_original_values(audio_info.duration, 0); // 默认分贝为0
+                    track.set_original_values(audio_info.duration, file_ops::DEFAULT_DECIBELS);
                     debug!("加载音频文件: {:?}, 时长: {}秒", path, audio_info.duration);
                 }
                 Err(e) => {
                     warn!("无法读取音频信息 {:?}: {}", path, e);
                     // 即使无法读取音频信息，也设置默认值
-                    track.set_original_values(180, 0); // 默认3分钟，0分贝
+                    track.set_original_values(file_ops::DEFAULT_TRACK_DURATION, file_ops::DEFAULT_DECIBELS);
                 }
             }
 
@@ -126,21 +113,7 @@ impl FileOperations {
 
     /// 生成ASCII安全的文件名
     pub fn generate_ascii_filename(original_name: &str, index: usize) -> String {
-        let ascii_name = original_name
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                c
-            } else {
-                '_'
-            })
-            .collect::<String>();
-        
-        // 如果转换后为空或只有下划线，使用默认名称
-        if ascii_name.is_empty() || ascii_name.chars().all(|c| c == '_') {
-            format!("track_{:03}", index)
-        } else {
-            ascii_name
-        }
+        StringUtils::safe_filename(original_name, index)
     }
 
     /// 复制轨道文件到模组目录并自动重命名

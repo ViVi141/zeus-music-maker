@@ -295,6 +295,7 @@ impl TaskManager {
     pub fn get_current_progress(&self) -> Option<&ProgressInfo> {
         self.current_task.as_ref()
     }
+
 }
 
 impl Default for ExportSettings {

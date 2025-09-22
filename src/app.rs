@@ -1,15 +1,19 @@
 use eframe::egui;
-use log::info;
+use log::{info, warn};
 
 use crate::models::AppState;
 use crate::ui::UIComponents;
 use crate::threading::ThreadedTaskProcessor;
+
+pub mod lifecycle;
 
 /// 主应用程序
 pub struct ZeusMusicApp {
     state: AppState,
     /// 多线程任务处理器
     task_processor: ThreadedTaskProcessor,
+    /// 生命周期管理器
+    lifecycle: lifecycle::AppLifecycle,
 }
 
 impl ZeusMusicApp {
@@ -18,6 +22,7 @@ impl ZeusMusicApp {
         Self {
             state: AppState::default(),
             task_processor: ThreadedTaskProcessor::new(),
+            lifecycle: lifecycle::AppLifecycle::new(),
         }
     }
 }
@@ -39,6 +44,20 @@ impl eframe::App for ZeusMusicApp {
                     ui.label(format!("作者: {}", self.state.project.author_name));
                     ui.separator();
                     ui.label(format!("轨道数: {}", self.state.track_count()));
+                    ui.separator();
+                    
+                    // 显示运行时间
+                    let uptime = self.get_uptime();
+                    let uptime_text = if uptime.as_secs() < 60 {
+                        format!("运行时间: {}秒", uptime.as_secs())
+                    } else if uptime.as_secs() < 3600 {
+                        format!("运行时间: {}分{}秒", uptime.as_secs() / 60, uptime.as_secs() % 60)
+                    } else {
+                        let hours = uptime.as_secs() / 3600;
+                        let minutes = (uptime.as_secs() % 3600) / 60;
+                        format!("运行时间: {}小时{}分", hours, minutes)
+                    };
+                    ui.label(uptime_text);
                 });
 
                 ui.add_space(10.0);
@@ -83,38 +102,24 @@ impl eframe::App for ZeusMusicApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        // 立即取消所有正在运行的任务
+        info!("程序开始优雅关闭...");
+        
+        // 1. 取消所有正在运行的任务
         self.task_processor.cancel_task();
         
-        // 不等待任何清理，直接强制退出
-        info!("程序正在强制退出...");
-        
-        // 使用最激进的退出方式
-        #[cfg(windows)]
-        {
-            use std::process::Command;
-            
-            // 方法1：使用taskkill强制终止进程
-            let pid = std::process::id();
-            let _ = std::thread::spawn(move || {
-                let _ = Command::new("taskkill")
-                    .args(&["/F", "/PID", &pid.to_string()])
-                    .spawn();
-            });
-            
-            // 方法2：使用Windows API直接终止进程（备用方案）
-            unsafe {
-                use winapi::um::processthreadsapi::GetCurrentProcess;
-                use winapi::um::processthreadsapi::TerminateProcess;
-                use winapi::um::handleapi::CloseHandle;
-                
-                let handle = GetCurrentProcess();
-                TerminateProcess(handle, 1);
-                CloseHandle(handle);
-            }
+        // 2. 等待任务完成（最多等待5秒）
+        if !self.task_processor.wait_for_completion(5000) {
+            warn!("任务未在超时时间内完成，继续关闭");
         }
         
-        // 立即强制退出，不等待任何清理
+        // 3. 清理资源
+        self.cleanup_resources();
+        
+        // 4. 记录运行时间
+        let uptime = self.lifecycle.get_uptime();
+        info!("应用程序已关闭，运行时间: {:.2}秒", uptime.as_secs_f64());
+        
+        // 5. 正常退出
         std::process::exit(0);
     }
 }
@@ -172,6 +177,33 @@ impl ZeusMusicApp {
         if let Err(e) = self.task_processor.process_audio_decrypt(files, output_dir) {
             self.state.task_manager.fail_task(format!("启动音频解密任务失败: {}", e));
         }
+    }
+
+    /// 清理资源
+    fn cleanup_resources(&mut self) {
+        info!("开始清理资源...");
+        
+        // 清理任务处理器
+        self.task_processor.cancel_task();
+        
+        // 清理状态
+        self.state.tracks.clear();
+        self.state.selected_track = None;
+        
+        // 清理UI状态
+        self.state.show_project_settings = false;
+        self.state.show_export_dialog = false;
+        self.state.show_about = false;
+        self.state.show_track_editor = false;
+        self.state.show_paa_converter = false;
+        self.state.show_audio_decrypt = false;
+        
+        info!("资源清理完成");
+    }
+
+    /// 获取应用程序运行时间
+    pub fn get_uptime(&self) -> std::time::Duration {
+        self.lifecycle.get_uptime()
     }
 
 }
