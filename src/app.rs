@@ -128,10 +128,12 @@ impl eframe::App for ZeusMusicApp {
         }
         
         // 如果有任务正在运行，请求持续重绘以确保UI实时更新
+        // 使用更智能的重绘策略，避免过度重绘
         if self.state.task_manager.is_running() || 
            self.state.is_downloading_ffmpeg || 
            self.state.task_manager.show_progress {
-            ctx.request_repaint();
+            // 使用request_repaint_after来减少重绘频率
+            ctx.request_repaint_after(std::time::Duration::from_millis(16)); // ~60 FPS
         }
     }
 

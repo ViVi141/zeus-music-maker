@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::collections::HashSet;
 
 /// 音乐轨道数据模型
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +42,13 @@ impl Track {
         if self.tag.is_empty() {
             self.track_name.clone()
         } else {
-            format!("[{}] {}", self.tag, self.track_name)
+            // 使用预分配的String避免多次分配
+            let mut result = String::with_capacity(self.tag.len() + self.track_name.len() + 4);
+            result.push('[');
+            result.push_str(&self.tag);
+            result.push_str("] ");
+            result.push_str(&self.track_name);
+            result
         }
     }
 
@@ -111,7 +118,13 @@ impl VideoFile {
         if self.tag.is_empty() {
             self.video_name.clone()
         } else {
-            format!("[{}] {}", self.tag, self.video_name)
+            // 使用预分配的String避免多次分配
+            let mut result = String::with_capacity(self.tag.len() + self.video_name.len() + 4);
+            result.push('[');
+            result.push_str(&self.tag);
+            result.push_str("] ");
+            result.push_str(&self.video_name);
+            result
         }
     }
 
@@ -302,7 +315,10 @@ impl TaskManager {
     pub fn update_progress(&mut self, current_file: usize, filename: &str) {
         if let Some(ref mut task) = self.current_task {
             task.current_file = current_file;
-            task.current_filename = filename.to_string();
+            // 避免不必要的字符串克隆，只在文件名变化时更新
+            if task.current_filename != filename {
+                task.current_filename = filename.to_string();
+            }
             task.progress = if task.total_files > 0 {
                 current_file as f32 / task.total_files as f32
             } else {
@@ -386,6 +402,12 @@ pub struct AppState {
     pub tracks: Vec<Track>,
     /// 视频文件列表
     pub video_files: Vec<VideoFile>,
+    /// 轨道路径缓存（用于快速重复检测）
+    #[serde(skip)]
+    pub track_paths: HashSet<PathBuf>,
+    /// 视频路径缓存（用于快速重复检测）
+    #[serde(skip)]
+    pub video_paths: HashSet<PathBuf>,
     /// 选中的轨道索引
     pub selected_track: Option<usize>,
     /// 选中的视频文件索引
@@ -493,10 +515,11 @@ impl AppState {
 
     /// 防重复添加轨道（基于文件路径）
     pub fn add_track_with_duplicate_check(&mut self, track: Track) -> bool {
-        // 检查是否已存在相同路径的轨道
-        if self.tracks.iter().any(|t| t.path == track.path) {
+        // 使用HashSet进行O(1)重复检测
+        if self.track_paths.contains(&track.path) {
             return false; // 重复，未添加
         }
+        self.track_paths.insert(track.path.clone());
         self.tracks.push(track);
         true // 成功添加
     }
@@ -535,7 +558,9 @@ impl AppState {
     pub fn remove_selected_track(&mut self) {
         if let Some(index) = self.selected_track {
             if index < self.tracks.len() {
-                self.tracks.remove(index);
+                let removed_track = self.tracks.remove(index);
+                // 从路径缓存中移除
+                self.track_paths.remove(&removed_track.path);
                 // 调整选中索引，如果删除的是最后一个，则选择前一个
                 if index >= self.tracks.len() && !self.tracks.is_empty() {
                     self.selected_track = Some(index - 1);
@@ -552,6 +577,7 @@ impl AppState {
     /// 清空所有轨道
     pub fn clear_tracks(&mut self) {
         self.tracks.clear();
+        self.track_paths.clear();
         self.selected_track = None;
     }
 
@@ -567,10 +593,11 @@ impl AppState {
 
     /// 防重复添加视频文件（基于文件路径）
     pub fn add_video_with_duplicate_check(&mut self, video: VideoFile) -> bool {
-        // 检查是否已存在相同路径的视频文件
-        if self.video_files.iter().any(|v| v.path == video.path) {
+        // 使用HashSet进行O(1)重复检测
+        if self.video_paths.contains(&video.path) {
             return false; // 重复，未添加
         }
+        self.video_paths.insert(video.path.clone());
         self.video_files.push(video);
         true // 成功添加
     }
@@ -595,7 +622,9 @@ impl AppState {
     pub fn remove_selected_video(&mut self) {
         if let Some(index) = self.selected_video {
             if index < self.video_files.len() {
-                self.video_files.remove(index);
+                let removed_video = self.video_files.remove(index);
+                // 从路径缓存中移除
+                self.video_paths.remove(&removed_video.path);
                 // 调整选中索引，如果删除的是最后一个，则选择前一个
                 if index >= self.video_files.len() && !self.video_files.is_empty() {
                     self.selected_video = Some(index - 1);
@@ -612,6 +641,7 @@ impl AppState {
     /// 清空所有视频文件
     pub fn clear_videos(&mut self) {
         self.video_files.clear();
+        self.video_paths.clear();
         self.selected_video = None;
     }
 }
@@ -622,6 +652,8 @@ impl Default for AppState {
             project: ProjectSettings::default(),
             tracks: Vec::new(),
             video_files: Vec::new(),
+            track_paths: HashSet::new(),
+            video_paths: HashSet::new(),
             selected_track: None,
             selected_video: None,
             export_settings: ExportSettings::default(),

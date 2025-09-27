@@ -67,11 +67,24 @@ impl VideoConverter {
         debug!("执行 FFmpeg 命令: {:?}", cmd);
         
         // 执行转换
-        let output = cmd
+        let child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .context("启动 FFmpeg 进程失败")?
+            .context("启动 FFmpeg 进程失败")?;
+            
+        // 设置进程优先级为高优先级（Windows）
+        #[cfg(target_os = "windows")]
+        {
+            let handle = child.id();
+            unsafe {
+                use winapi::um::processthreadsapi::SetPriorityClass;
+                use winapi::um::winbase::HIGH_PRIORITY_CLASS;
+                SetPriorityClass(handle as _, HIGH_PRIORITY_CLASS);
+            }
+        }
+        
+        let output = child
             .wait_with_output()
             .context("等待 FFmpeg 进程完成失败")?;
         

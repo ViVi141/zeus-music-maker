@@ -40,6 +40,17 @@ fn main() -> Result<(), eframe::Error> {
     // 禁用一些可能影响性能的特性
     std::env::set_var("RUSTC_BOOTSTRAP", "0");
     
+    // 设置进程优先级为高优先级（Windows）
+    #[cfg(target_os = "windows")]
+    {
+        unsafe {
+            use winapi::um::processthreadsapi::SetPriorityClass;
+            use winapi::um::winbase::HIGH_PRIORITY_CLASS;
+            use winapi::um::processthreadsapi::GetCurrentProcess;
+            SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+        }
+    }
+    
     info!("启动宙斯音乐制作器");
     
     let options = eframe::NativeOptions {

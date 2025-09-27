@@ -75,14 +75,16 @@ impl<'a> KuGouDecoder<'a> {
         F: Fn() -> bool
     {
         let mut output_file = std::fs::File::create(output_path)?;
-        let mut buf = [0; 16 * 1024];
+        // 增大缓冲区大小以提高I/O效率
+        let mut buf = [0; 64 * 1024]; // 64KB 缓冲区
         
         // 读取文件头用于格式检测
         let mut head_buffer = [0; 128];
         self.read(&mut head_buffer)?;
         
-        // 检测音频格式
-        let info: Infer = Infer::new();
+        // 检测音频格式（使用静态实例避免重复创建）
+        static INFER: std::sync::LazyLock<Infer> = std::sync::LazyLock::new(|| Infer::new());
+        let info = &*INFER;
         let ext = if let Some(kind) = info.get(&head_buffer) {
             match kind.mime_type() {
                 "audio/midi" => "midi",

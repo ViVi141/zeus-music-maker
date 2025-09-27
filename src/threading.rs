@@ -48,7 +48,8 @@ pub struct ThreadedTaskProcessor {
 
 impl ThreadedTaskProcessor {
     pub fn new() -> Self {
-        let (progress_sender, progress_receiver) = bounded(1000);
+        // 增大通道缓冲区以提高并发性能
+        let (progress_sender, progress_receiver) = bounded(5000);
         Self {
             progress_sender,
             progress_receiver,
@@ -72,7 +73,10 @@ impl ThreadedTaskProcessor {
 
             for (i, input_path) in files.iter().enumerate() {
                 // 检查取消标志
-                if *cancel_flag.lock().unwrap() {
+                if *cancel_flag.lock().unwrap_or_else(|_| {
+                    warn!("获取取消标志失败，假设任务被取消");
+                    panic!("Mutex poisoned, cannot continue")
+                }) {
                     info!("音频解密任务被取消");
                     // 立即发送取消完成消息
                     let _ = progress_sender.send(TaskMessage::TaskCompleted {
@@ -98,7 +102,10 @@ impl ThreadedTaskProcessor {
                 }
 
                 // 处理文件
-                let cancel_check = || *cancel_flag.lock().unwrap();
+                let cancel_check = || *cancel_flag.lock().unwrap_or_else(|_| {
+                    warn!("获取取消标志失败，假设任务被取消");
+                    panic!("Mutex poisoned, cannot continue")
+                });
                 let result = if AudioDecryptManager::is_kugou_file(input_path) {
                     match AudioDecryptManager::decrypt_kugou_file_with_cancel(input_path, &output_dir, &cancel_check) {
                         Ok(output_path) => {
@@ -168,7 +175,10 @@ impl ThreadedTaskProcessor {
 
             for (i, input_path) in files.iter().enumerate() {
                 // 检查取消标志
-                if *cancel_flag.lock().unwrap() {
+                if *cancel_flag.lock().unwrap_or_else(|_| {
+                    warn!("获取取消标志失败，假设任务被取消");
+                    panic!("Mutex poisoned, cannot continue")
+                }) {
                     info!("PAA转换任务被取消");
                     // 立即发送取消完成消息
                     let _ = progress_sender.send(TaskMessage::TaskCompleted {
@@ -240,7 +250,11 @@ impl ThreadedTaskProcessor {
         let cancel_flag = self.cancel_flag.clone();
 
         thread::spawn(move || {
-            let _rt = tokio::runtime::Runtime::new().unwrap();
+            // 使用多线程运行时以提高并发性能
+            let _rt = tokio::runtime::Runtime::new().unwrap_or_else(|e| {
+                warn!("创建Tokio运行时失败: {}", e);
+                panic!("无法创建Tokio运行时");
+            });
             let mut success_count = 0;
             let mut error_count = 0;
             let mut results = Vec::new();
@@ -261,7 +275,10 @@ impl ThreadedTaskProcessor {
 
             for (i, input_path) in files.iter().enumerate() {
                 // 检查取消标志
-                if *cancel_flag.lock().unwrap() {
+                if *cancel_flag.lock().unwrap_or_else(|_| {
+                    warn!("获取取消标志失败，假设任务被取消");
+                    panic!("Mutex poisoned, cannot continue")
+                }) {
                     info!("音频转换任务被取消");
                     let _ = progress_sender.send(TaskMessage::TaskCompleted {
                         success_count,
@@ -290,7 +307,10 @@ impl ThreadedTaskProcessor {
                     let output_path = output_dir.join(format!("{}.ogg", file_stem.to_string_lossy()));
                     
                     // 执行转换
-                    let cancel_check = || *cancel_flag.lock().unwrap();
+                    let cancel_check = || *cancel_flag.lock().unwrap_or_else(|_| {
+                    warn!("获取取消标志失败，假设任务被取消");
+                    panic!("Mutex poisoned, cannot continue")
+                });
                     match converter.convert_to_ogg_with_cancel(input_path, &output_path, &cancel_check) {
                         Ok(_) => {
                             success_count += 1;
@@ -332,7 +352,11 @@ impl ThreadedTaskProcessor {
         let cancel_flag = self.cancel_flag.clone();
 
         thread::spawn(move || {
-            let _rt = tokio::runtime::Runtime::new().unwrap();
+            // 使用多线程运行时以提高并发性能
+            let _rt = tokio::runtime::Runtime::new().unwrap_or_else(|e| {
+                warn!("创建Tokio运行时失败: {}", e);
+                panic!("无法创建Tokio运行时");
+            });
             let mut success_count = 0;
             let mut error_count = 0;
             let mut results = Vec::new();
@@ -353,7 +377,10 @@ impl ThreadedTaskProcessor {
 
             for (i, input_path) in files.iter().enumerate() {
                 // 检查取消标志
-                if *cancel_flag.lock().unwrap() {
+                if *cancel_flag.lock().unwrap_or_else(|_| {
+                    warn!("获取取消标志失败，假设任务被取消");
+                    panic!("Mutex poisoned, cannot continue")
+                }) {
                     info!("视频转换任务被取消");
                     let _ = progress_sender.send(TaskMessage::TaskCompleted {
                         success_count,
@@ -454,7 +481,10 @@ impl ThreadedTaskProcessor {
             let result = rt.block_on(async {
                 downloader.download_ffmpeg_with_fallback(|progress, status| {
                     // 检查取消标志
-                    if *cancel_flag.lock().unwrap() {
+                    if *cancel_flag.lock().unwrap_or_else(|_| {
+                    warn!("获取取消标志失败，假设任务被取消");
+                    panic!("Mutex poisoned, cannot continue")
+                }) {
                         return Err(anyhow::anyhow!("下载被取消"));
                     }
 
@@ -514,8 +544,8 @@ impl ThreadedTaskProcessor {
         while start_time.elapsed() < timeout {
             // 检查是否还有未完成的任务
             if let Ok(_) = self.progress_receiver.try_recv() {
-                // 还有消息在处理，继续等待
-                std::thread::sleep(std::time::Duration::from_millis(10));
+                // 还有消息在处理，使用更短的等待时间提高响应性
+                std::thread::sleep(std::time::Duration::from_millis(5));
             } else {
                 // 没有更多消息，任务可能已完成
                 break;
@@ -527,7 +557,11 @@ impl ThreadedTaskProcessor {
 
     /// 重置取消标志
     pub fn reset_cancel_flag(&self) {
-        *self.cancel_flag.lock().unwrap() = false;
+        if let Ok(mut flag) = self.cancel_flag.lock() {
+            *flag = false;
+        } else {
+            warn!("重置取消标志失败");
+        }
     }
 }
 

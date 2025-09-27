@@ -263,13 +263,20 @@ impl UIComponents {
             ui.add_space(5.0);
             ui.separator();
             ui.add_space(5.0);
+            // 使用预分配的字符串避免重复分配
+            let mut track_display = String::with_capacity(100);
             for (i, track) in state.tracks.iter().enumerate() {
                 let is_selected = *selected_track == Some(i);
                 
-                let response = ui.selectable_label(
-                    is_selected,
-                    format!("🎵 {} ({}秒)", track.display_name(), track.duration)
-                );
+                // 重用字符串缓冲区
+                track_display.clear();
+                track_display.push_str("🎵 ");
+                track_display.push_str(&track.display_name());
+                track_display.push_str(" (");
+                track_display.push_str(&track.duration.to_string());
+                track_display.push_str("秒)");
+                
+                let response = ui.selectable_label(is_selected, &track_display);
 
                 if response.clicked() {
                     *selected_track = Some(i);
@@ -302,17 +309,24 @@ impl UIComponents {
             ui.add_space(5.0);
             ui.separator();
             ui.add_space(5.0);
+            // 使用预分配的字符串避免重复分配
+            let mut video_display = String::with_capacity(120);
             for (i, video) in state.video_files.iter().enumerate() {
                 let is_selected = *selected_video == Some(i);
                 
-                let response = ui.selectable_label(
-                    is_selected,
-                    format!("🎬 {} ({}x{}, {}秒)", 
-                        video.display_name(), 
-                        video.resolution.0, 
-                        video.resolution.1, 
-                        video.duration)
-                );
+                // 重用字符串缓冲区
+                video_display.clear();
+                video_display.push_str("🎬 ");
+                video_display.push_str(&video.display_name());
+                video_display.push_str(" (");
+                video_display.push_str(&video.resolution.0.to_string());
+                video_display.push_str("x");
+                video_display.push_str(&video.resolution.1.to_string());
+                video_display.push_str(", ");
+                video_display.push_str(&video.duration.to_string());
+                video_display.push_str("秒)");
+                
+                let response = ui.selectable_label(is_selected, &video_display);
 
                 if response.clicked() {
                     *selected_video = Some(i);

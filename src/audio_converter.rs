@@ -58,13 +58,18 @@ impl AudioConverter {
         }
         
         // 构建 FFmpeg 命令
+        let input_str = input_path.to_str()
+            .ok_or_else(|| anyhow::anyhow!("输入路径包含无效字符: {:?}", input_path))?;
+        let output_str = output_path.to_str()
+            .ok_or_else(|| anyhow::anyhow!("输出路径包含无效字符: {:?}", output_path))?;
+            
         let mut cmd = Command::new(&self.ffmpeg_path);
         cmd.args([
-            "-i", input_path.to_str().unwrap(),
+            "-i", input_str,
             "-c:a", "libvorbis",  // 使用 Vorbis 编码器
             "-q:a", "5",          // 质量设置 (0-10, 5 是平衡点)
             "-y",                 // 覆盖输出文件
-            output_path.to_str().unwrap(),
+            output_str,
         ]);
         
         // 执行转换
@@ -81,6 +86,17 @@ impl AudioConverter {
         
         let mut child = child.spawn().context("启动 FFmpeg 失败")?;
         
+        // 设置进程优先级为高优先级（Windows）
+        #[cfg(target_os = "windows")]
+        {
+            let handle = child.id();
+            unsafe {
+                use winapi::um::processthreadsapi::SetPriorityClass;
+                use winapi::um::winbase::HIGH_PRIORITY_CLASS;
+                SetPriorityClass(handle as _, HIGH_PRIORITY_CLASS);
+            }
+        }
+        
         // 等待完成并检查取消
         let result = loop {
             match child.try_wait() {
@@ -92,8 +108,8 @@ impl AudioConverter {
                         let _ = child.kill();
                         return Err(anyhow::anyhow!("转换任务被取消"));
                     }
-                    // 短暂等待
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    // 短暂等待，减少CPU占用
+                    std::thread::sleep(std::time::Duration::from_millis(50));
                 }
                 Err(e) => break Err(e),
             }

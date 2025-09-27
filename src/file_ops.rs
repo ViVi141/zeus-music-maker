@@ -13,6 +13,36 @@ use crate::utils::constants::file_ops;
 pub struct FileOperations;
 
 impl FileOperations {
+    /// 优化的文件复制方法
+    fn copy_file_optimized(source: &Path, destination: &Path) -> Result<()> {
+        use std::io::{BufReader, BufWriter, Read, Write};
+        
+        // 创建目标目录
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        
+        // 打开源文件
+        let source_file = fs::File::open(source)?;
+        let mut reader = BufReader::with_capacity(64 * 1024, source_file); // 64KB 缓冲区
+        
+        // 创建目标文件
+        let dest_file = fs::File::create(destination)?;
+        let mut writer = BufWriter::with_capacity(64 * 1024, dest_file); // 64KB 缓冲区
+        
+        // 复制数据
+        let mut buffer = [0u8; 64 * 1024]; // 64KB 缓冲区
+        loop {
+            let bytes_read = reader.read(&mut buffer)?;
+            if bytes_read == 0 {
+                break;
+            }
+            writer.write_all(&buffer[..bytes_read])?;
+        }
+        
+        writer.flush()?;
+        Ok(())
+    }
     /// 选择音频文件（仅支持OGG格式）
     pub fn select_audio_files() -> Option<Vec<PathBuf>> {
         FileUtils::select_audio_files()
@@ -181,14 +211,18 @@ impl FileOperations {
     /// 复制轨道文件到模组目录并自动重命名
     pub fn copy_track_files(tracks: &[Track], mod_dir: &Path) -> Result<Vec<String>> {
         let tracks_dir = mod_dir.join("folderwithtracks");
-        let mut copied_files = Vec::new();
+        // 预分配容量，避免多次重新分配
+        let mut copied_files = Vec::with_capacity(tracks.len());
 
         for (i, track) in tracks.iter().enumerate() {
             let source = &track.path;
             
             // 生成ASCII安全的文件名
             let ascii_filename = Self::generate_ascii_filename(&track.track_name, i);
-            let new_filename = format!("{}.ogg", ascii_filename);
+            // 使用预分配的String避免多次分配
+            let mut new_filename = String::with_capacity(ascii_filename.len() + 4);
+            new_filename.push_str(&ascii_filename);
+            new_filename.push_str(".ogg");
             let destination = tracks_dir.join(&new_filename);
 
             if !source.exists() {
@@ -196,7 +230,8 @@ impl FileOperations {
                 continue;
             }
 
-            fs::copy(source, &destination)
+            // 使用更高效的文件复制方法
+            Self::copy_file_optimized(source, &destination)
                 .with_context(|| format!("无法复制文件: {:?} -> {:?}", source, destination))?;
 
             copied_files.push(new_filename);
@@ -213,7 +248,8 @@ impl FileOperations {
 
         if let Some(logo_path) = &project.logo_path {
             if logo_path.exists() {
-                fs::copy(logo_path, &logo_dest)
+                // 使用更高效的文件复制方法
+                Self::copy_file_optimized(logo_path, &logo_dest)
                     .with_context(|| format!("无法复制Logo文件: {:?} -> {:?}", logo_path, logo_dest))?;
                 info!("复制自定义Logo: {:?}", logo_path);
             } else {

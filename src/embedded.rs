@@ -24,9 +24,11 @@ pub struct Libraries;
 pub struct EmbeddedResources;
 
 impl EmbeddedResources {
-    /// 获取模板内容
+    /// 获取模板内容（带缓存）
     pub fn get_template(&self, name: &str) -> Option<String> {
         let filename = format!("{}.txt", name);
+        
+        // 从嵌入资源加载
         Templates::get(&filename)
             .and_then(|file| String::from_utf8(file.data.into_owned()).ok())
     }

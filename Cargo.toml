@@ -64,11 +64,11 @@ base64 = "0.21"
 hex = "0.4"
 
 # Threading and async support
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.35", features = ["rt", "rt-multi-thread", "net", "fs", "io-util", "time"] }
 crossbeam-channel = "0.5"
 
 # HTTP client for downloading FFmpeg
-reqwest = { version = "0.11", features = ["json", "stream"] }
+reqwest = { version = "0.11", features = ["json", "stream", "gzip", "brotli"] }
 indicatif = "0.17"
 zip = "0.6"
 
@@ -93,6 +93,15 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
+overflow-checks = false
+debug = false
+incremental = false
+
+# 开发环境优化配置
+[profile.dev]
+opt-level = 1
+debug = 1
+incremental = true
 
 
 # Windows特定配置

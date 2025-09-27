@@ -26,8 +26,9 @@ impl AudioProcessor {
             .with_context(|| format!("Failed to open file: {:?}", path))?;
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
-        // 创建格式提示
-        let mut hint = Hint::new();
+        // 创建格式提示（使用静态实例避免重复创建）
+        static HINT: std::sync::LazyLock<Hint> = std::sync::LazyLock::new(|| Hint::new());
+        let mut hint = (*HINT).clone();
         if let Some(extension) = path.extension().and_then(|s| s.to_str()) {
             hint.with_extension(extension);
         }

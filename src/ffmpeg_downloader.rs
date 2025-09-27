@@ -177,6 +177,9 @@ impl FFmpegDownloader {
         // 创建 HTTP 客户端
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(300)) // 5分钟超时
+            .connect_timeout(std::time::Duration::from_secs(30)) // 30秒连接超时
+            .tcp_keepalive(std::time::Duration::from_secs(60)) // TCP保活
+            .pool_max_idle_per_host(10) // 连接池优化
             .build()?;
         
         // 发送请求获取文件大小
@@ -198,7 +201,7 @@ impl FFmpegDownloader {
         
         // 创建临时文件
         let temp_path = self.output_path.with_extension("tmp");
-        let mut file = fs::File::create(&temp_path)?;
+        let file = fs::File::create(&temp_path)?;
         let mut downloaded: u64 = 0;
         
         // 创建进度条
@@ -222,9 +225,12 @@ impl FFmpegDownloader {
         
         // 下载数据块
         let mut chunk_count = 0;
+        // 使用缓冲写入以提高I/O效率
+        use std::io::{BufWriter, Write};
+        let mut writer = BufWriter::with_capacity(64 * 1024, file); // 64KB 缓冲区
+        
         while let Some(chunk) = response.chunk().await? {
-            use std::io::Write;
-            file.write_all(&chunk)?;
+            writer.write_all(&chunk)?;
             downloaded += chunk.len() as u64;
             chunk_count += 1;
             
@@ -251,6 +257,8 @@ impl FFmpegDownloader {
             }
         }
         
+        // 确保所有数据都写入文件
+        writer.flush()?;
         progress_bar.finish_with_message("下载完成");
         
         // 解压文件
