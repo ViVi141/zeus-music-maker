@@ -1,0 +1,7 @@
+name="{{mod_display_name}}";
+picture="";
+actionName="";
+action="";
+descriptionShort="{{mod_display_name}} - {{author_name}}";
+description="视频模组：{{mod_display_name}}";
+dir="@{{mod_folder_name}}";

@@ -51,6 +51,14 @@ impl FileUtils {
             .pick_folder()
     }
 
+    /// 选择视频文件
+    pub fn select_video_files() -> Option<Vec<PathBuf>> {
+        FileDialog::new()
+            .add_filter("视频文件", &["mp4", "avi", "mov", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "ogv"])
+            .set_title("选择视频文件")
+            .pick_files()
+    }
+
     /// 验证文件
     pub fn validate_file(path: &Path) -> Result<()> {
         if !path.exists() {

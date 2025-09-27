@@ -82,7 +82,10 @@ impl eframe::App for ZeusMusicApp {
         UIComponents::show_audio_decrypt_result_dialog(ctx, &mut self.state);
         UIComponents::show_audio_converter_dialog(ctx, &mut self.state);
         UIComponents::show_audio_convert_result_dialog(ctx, &mut self.state);
+        UIComponents::show_video_converter_dialog(ctx, &mut self.state);
+        UIComponents::show_video_convert_result_dialog(ctx, &mut self.state);
         UIComponents::show_ffmpeg_download_dialog(ctx, &mut self.state);
+        UIComponents::show_ffmpeg_plugin_dialog(ctx, &mut self.state);
         UIComponents::show_manual_path_selection_dialog(ctx, &mut self.state);
         UIComponents::show_progress_dialog(ctx, &mut self.state, &mut self.task_processor);
         
@@ -106,6 +109,17 @@ impl eframe::App for ZeusMusicApp {
             }
             self.state.should_convert_audio = false;
             self.state.show_audio_converter = false;
+        }
+        
+        // 检查是否需要执行视频转换
+        if self.state.should_convert_video {
+            if let Some(ref output_dir) = self.state.video_convert_output_directory {
+                let output_dir = output_dir.clone();
+                let selected_files = self.state.video_convert_selected_files.clone();
+                self.start_video_convert_task(selected_files, output_dir);
+            }
+            self.state.should_convert_video = false;
+            self.state.show_video_converter = false;
         }
         
         // 检查是否需要下载 FFmpeg
@@ -215,6 +229,15 @@ impl ZeusMusicApp {
                                 ));
                                 self.state.show_audio_convert_result = true;
                             }
+                            crate::models::TaskType::VideoConvert => {
+                                self.state.video_convert_result = Some(format!(
+                                    "视频转换完成！\n\n成功: {}\n失败: {}\n\n详细结果:\n{}",
+                                    success_count,
+                                    error_count,
+                                    results.join("\n")
+                                ));
+                                self.state.show_video_convert_result = true;
+                            }
                             _ => {}
                         }
                     }
@@ -240,6 +263,16 @@ impl ZeusMusicApp {
         
         if let Err(e) = self.task_processor.process_audio_convert(files, output_dir) {
             self.state.task_manager.fail_task(format!("启动音频转换任务失败: {}", e));
+        }
+    }
+
+    /// 开始视频转换任务
+    pub fn start_video_convert_task(&mut self, files: Vec<std::path::PathBuf>, output_dir: std::path::PathBuf) {
+        self.state.task_manager.start_task(crate::models::TaskType::VideoConvert, files.len());
+        self.task_processor.reset_cancel_flag();
+        
+        if let Err(e) = self.task_processor.process_video_convert(files, output_dir) {
+            self.state.task_manager.fail_task(format!("启动视频转换任务失败: {}", e));
         }
     }
 

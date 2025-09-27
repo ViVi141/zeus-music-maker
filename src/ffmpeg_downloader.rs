@@ -127,11 +127,6 @@ impl FFmpegDownloader {
         Ok(ffmpeg_dir)
     }
     
-    /// 创建用户工作空间下载器
-    pub fn new_user_workspace() -> Result<Self> {
-        let ffmpeg_dir = Self::get_ffmpeg_directory()?;
-        Ok(Self::new(&ffmpeg_dir))
-    }
 
     /// 创建用户工作空间下载器（支持多源）
     pub fn new_user_workspace_with_fallback() -> Result<Self> {
@@ -328,60 +323,6 @@ impl FFmpegDownloader {
         }
     }
     
-    /// 查找可用的 FFmpeg 路径
-    pub fn find_ffmpeg_path() -> Option<PathBuf> {
-        // 1. 检查用户工作空间中的 FFmpeg
-        if let Ok(workspace_dir) = Self::get_ffmpeg_directory() {
-            let ffmpeg_path = workspace_dir.join("ffmpeg.exe");
-            if Self::is_ffmpeg_available(&ffmpeg_path) {
-                info!("在用户工作空间找到 FFmpeg: {:?}", ffmpeg_path);
-                return Some(ffmpeg_path);
-            }
-        }
-        
-        // 2. 检查系统 PATH 中的 FFmpeg
-        let system_paths = vec![
-            PathBuf::from("ffmpeg.exe"),
-            PathBuf::from("ffmpeg"),
-        ];
-        
-        for path in system_paths {
-            if Self::is_ffmpeg_available(&path) {
-                info!("在系统 PATH 找到 FFmpeg: {:?}", path);
-                return Some(path);
-            }
-        }
-        
-        // 3. 检查常见的安装目录
-        let common_dirs = vec![
-            PathBuf::from("C:\\ffmpeg\\bin\\ffmpeg.exe"),
-            PathBuf::from("C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe"),
-            PathBuf::from("C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe"),
-        ];
-        
-        for path in common_dirs {
-            if Self::is_ffmpeg_available(&path) {
-                info!("在常见目录找到 FFmpeg: {:?}", path);
-                return Some(path);
-            }
-        }
-        
-        // 4. 检查当前目录
-        let current_dirs = vec![
-            PathBuf::from("./ffmpeg/ffmpeg.exe"),
-            PathBuf::from("./assets/ffmpeg/ffmpeg.exe"),
-        ];
-        
-        for path in current_dirs {
-            if Self::is_ffmpeg_available(&path) {
-                info!("在当前目录找到 FFmpeg: {:?}", path);
-                return Some(path);
-            }
-        }
-        
-        warn!("未找到可用的 FFmpeg");
-        None
-    }
     
     /// 保存 FFmpeg 路径到配置文件
     pub fn save_ffmpeg_path(ffmpeg_path: &Path) -> Result<()> {
@@ -396,24 +337,6 @@ impl FFmpegDownloader {
         Ok(())
     }
     
-    /// 从配置文件加载 FFmpeg 路径
-    pub fn load_ffmpeg_path() -> Option<PathBuf> {
-        if let Ok(workspace) = Self::get_user_workspace() {
-            let config_file = workspace.join("ffmpeg_path.txt");
-            if let Ok(path_str) = fs::read_to_string(&config_file) {
-                let path = PathBuf::from(path_str.trim());
-                if Self::is_ffmpeg_available(&path) {
-                    info!("从配置文件加载 FFmpeg 路径: {:?}", path);
-                    return Some(path);
-                } else {
-                    warn!("配置文件中保存的 FFmpeg 路径无效: {:?}", path);
-                    // 删除无效的配置文件
-                    let _ = fs::remove_file(&config_file);
-                }
-            }
-        }
-        None
-    }
 }
 
 /// FFmpeg 信息

@@ -7,6 +7,7 @@ use std::thread;
 use crate::audio_decrypt::AudioDecryptManager;
 use crate::paa_converter::{PaaConverter, PaaOptions};
 use crate::audio_converter::AudioConverter;
+use crate::video_converter::VideoConverter;
 use crate::ffmpeg_downloader::FFmpegDownloader;
 
 /// 任务消息
@@ -309,6 +310,108 @@ impl ThreadedTaskProcessor {
             }
 
             // 发送完成消息
+            if let Err(e) = progress_sender.send(TaskMessage::TaskCompleted {
+                success_count,
+                error_count,
+                results,
+            }) {
+                warn!("发送任务完成消息失败: {}", e);
+            }
+        });
+
+        Ok(())
+    }
+
+    /// 处理视频格式转换任务
+    pub fn process_video_convert(
+        &self,
+        files: Vec<PathBuf>,
+        output_dir: PathBuf,
+    ) -> Result<()> {
+        let progress_sender = self.progress_sender.clone();
+        let cancel_flag = self.cancel_flag.clone();
+
+        thread::spawn(move || {
+            let _rt = tokio::runtime::Runtime::new().unwrap();
+            let mut success_count = 0;
+            let mut error_count = 0;
+            let mut results = Vec::new();
+            
+            // 尝试创建视频转换器，如果失败则提示下载
+            let converter = match VideoConverter::new() {
+                Ok(conv) => conv,
+                Err(e) => {
+                    warn!("FFmpeg 未找到: {}", e);
+                    let _ = progress_sender.send(TaskMessage::TaskCompleted {
+                        success_count: 0,
+                        error_count: files.len(),
+                        results: vec![format!("FFmpeg 未找到: {}\n\n请使用软件的自动下载功能或手动安装 FFmpeg", e)],
+                    });
+                    return;
+                }
+            };
+
+            for (i, input_path) in files.iter().enumerate() {
+                // 检查取消标志
+                if *cancel_flag.lock().unwrap() {
+                    info!("视频转换任务被取消");
+                    let _ = progress_sender.send(TaskMessage::TaskCompleted {
+                        success_count,
+                        error_count,
+                        results: vec!["任务被用户取消".to_string()],
+                    });
+                    return;
+                }
+
+                // 发送进度更新
+                let filename = input_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                
+                if let Err(e) = progress_sender.send(TaskMessage::UpdateProgress {
+                    current_file: i,
+                    filename: filename.clone(),
+                }) {
+                    warn!("发送进度更新失败: {}", e);
+                }
+
+                // 生成输出文件名
+                let output_filename = input_path
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string() + ".ogv";
+                
+                let output_path = output_dir.join(output_filename);
+
+                // 执行视频转换
+                match converter.convert_to_ogv(input_path, &output_path) {
+                    Ok(_) => {
+                        success_count += 1;
+                        results.push(format!("✓ 成功转换: {} -> {}", filename, output_path.display()));
+                        info!("视频转换成功: {} -> {}", input_path.display(), output_path.display());
+                    }
+                    Err(e) => {
+                        error_count += 1;
+                        results.push(format!("✗ 转换失败: {} - {}", filename, e));
+                        warn!("视频转换失败: {} - {}", input_path.display(), e);
+                    }
+                }
+            }
+
+            // 发送完成消息
+            let final_message = if success_count > 0 && error_count == 0 {
+                format!("视频转换全部成功！\n\n成功转换: {} 个文件\n输出目录: {}", success_count, output_dir.display())
+            } else if success_count > 0 {
+                format!("视频转换部分成功\n\n成功: {} 个文件\n失败: {} 个文件\n输出目录: {}", success_count, error_count, output_dir.display())
+            } else {
+                format!("视频转换全部失败\n\n失败: {} 个文件", error_count)
+            };
+
+            results.insert(0, final_message);
+
             if let Err(e) = progress_sender.send(TaskMessage::TaskCompleted {
                 success_count,
                 error_count,

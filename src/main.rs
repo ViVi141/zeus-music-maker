@@ -13,6 +13,8 @@ mod file_ops;
 mod paa_converter;
 mod audio_decrypt;
 mod audio_converter;
+mod video_converter;
+mod ffmpeg_plugin;
 mod ffmpeg_downloader;
 mod templates;
 mod ui;

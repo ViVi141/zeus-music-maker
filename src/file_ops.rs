@@ -4,7 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::audio::AudioProcessor;
-use crate::models::{ProjectSettings, Track};
+use crate::models::{ProjectSettings, Track, VideoFile};
+use crate::video_converter::VideoConverter;
 use crate::utils::{FileUtils, StringUtils};
 use crate::utils::constants::file_ops;
 
@@ -37,6 +38,11 @@ impl FileOperations {
     /// 选择导出目录
     pub fn select_export_directory() -> Option<PathBuf> {
         FileUtils::select_export_directory()
+    }
+
+    /// 选择视频文件
+    pub fn select_video_files() -> Option<Vec<PathBuf>> {
+        FileUtils::select_video_files()
     }
 
     /// 加载音频文件并创建轨道
@@ -91,6 +97,62 @@ impl FileOperations {
 
         info!("成功加载 {} 个音频文件", tracks.len());
         Ok(tracks)
+    }
+
+    /// 加载视频文件并创建视频文件记录
+    pub fn load_video_files(paths: Vec<PathBuf>, class_name: &str) -> Result<Vec<VideoFile>> {
+        let mut video_files = Vec::new();
+
+        for (index, path) in paths.iter().enumerate() {
+            // 验证文件
+            if let Err(e) = FileUtils::validate_file(path) {
+                warn!("文件验证失败 {:?}: {}", path, e);
+                continue;
+            }
+
+            // 生成轨道名称和类名
+            let video_name = StringUtils::generate_track_name_from_path(path, index);
+            let video_class_name = StringUtils::generate_class_name(&video_name, class_name, index);
+
+            // 创建视频文件记录
+            let mut video_file = VideoFile::new(path.clone(), video_name, video_class_name);
+
+            // 尝试获取视频信息
+            if let Ok(converter) = VideoConverter::new() {
+                if converter.is_supported_video_format(path) {
+                    match converter.get_video_info(path) {
+                        Ok(video_info) => {
+                            let file_size = std::fs::metadata(path)
+                                .map(|m| m.len())
+                                .unwrap_or(0);
+                            
+                            video_file.set_video_info(
+                                video_info.duration,
+                                video_info.resolution,
+                                file_size,
+                            );
+                            
+                            info!("视频信息加载成功: {:?} - {}x{}, {}秒", 
+                                path, video_info.resolution.0, video_info.resolution.1, video_info.duration);
+                        }
+                        Err(e) => {
+                            warn!("获取视频信息失败 {:?}: {}", path, e);
+                            // 即使无法获取信息，也添加文件记录
+                        }
+                    }
+                } else {
+                    warn!("不支持的视频格式: {:?}", path);
+                    continue;
+                }
+            } else {
+                warn!("无法创建视频转换器，跳过视频信息获取: {:?}", path);
+            }
+
+            video_files.push(video_file);
+        }
+
+        info!("成功加载 {} 个视频文件", video_files.len());
+        Ok(video_files)
     }
 
     /// 创建模组目录结构

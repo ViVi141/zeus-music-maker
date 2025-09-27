@@ -1,0 +1,13 @@
+class CfgPatches
+{
+    class {{mod_name}}
+    {
+        name = "{{mod_display_name}}";
+        author = "{{author_name}}";
+        url = "";
+        requiredVersion = 0.1;
+        requiredAddons[] = {};
+        units[] = {};
+        weapons[] = {};
+    };
+};

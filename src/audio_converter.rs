@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use log::{info, error};
-use crate::ffmpeg_downloader::FFmpegDownloader;
+use crate::ffmpeg_plugin::FFmpegPlugin;
 
 /// FFmpeg 音频转换器
 pub struct AudioConverter {
@@ -12,41 +12,19 @@ pub struct AudioConverter {
 impl AudioConverter {
     /// 创建新的音频转换器实例
     pub fn new() -> Result<Self> {
-        Self::new_with_download(false)
+        Self::new_with_plugin(&FFmpegPlugin::new()?)
     }
     
-    /// 创建新的音频转换器实例（可选择是否自动下载）
-    pub fn new_with_download(auto_download: bool) -> Result<Self> {
-        // 首先尝试从配置文件加载路径
-        if let Some(path) = crate::ffmpeg_downloader::FFmpegDownloader::load_ffmpeg_path() {
-            info!("从配置文件加载 FFmpeg: {:?}", path);
-            return Ok(Self { ffmpeg_path: path });
+    /// 使用FFmpeg插件创建音频转换器实例
+    pub fn new_with_plugin(plugin: &FFmpegPlugin) -> Result<Self> {
+        if let Some(path) = plugin.get_ffmpeg_path() {
+            info!("使用FFmpeg插件找到路径: {:?}", path);
+            Ok(Self { ffmpeg_path: path })
+        } else {
+            Err(anyhow::anyhow!("FFmpeg 未找到。请选择：\n1. 使用自动下载功能\n2. 手动安装 FFmpeg 到系统 PATH\n3. 手动选择 FFmpeg 路径"))
         }
-        
-        // 然后尝试自动查找
-        if let Some(path) = crate::ffmpeg_downloader::FFmpegDownloader::find_ffmpeg_path() {
-            // 保存找到的路径到配置文件
-            let _ = crate::ffmpeg_downloader::FFmpegDownloader::save_ffmpeg_path(&path);
-            return Ok(Self { ffmpeg_path: path });
-        }
-        
-        if auto_download {
-            // 尝试自动下载
-            return Self::download_and_create();
-        }
-        
-        Err(anyhow::anyhow!("FFmpeg 未找到。请选择：\n1. 使用自动下载功能\n2. 手动安装 FFmpeg 到系统 PATH\n3. 手动选择 FFmpeg 路径"))
     }
     
-    /// 下载并创建音频转换器
-    fn download_and_create() -> Result<Self> {
-        // 使用用户工作空间下载
-        let _downloader = FFmpegDownloader::new_user_workspace()?;
-        
-        // 这里我们需要异步运行时，但当前函数是同步的
-        // 我们需要在调用处处理异步下载
-        Err(anyhow::anyhow!("需要异步下载 FFmpeg，请使用 download_ffmpeg_if_needed 方法"))
-    }
     
     
     

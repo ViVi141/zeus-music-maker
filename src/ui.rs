@@ -139,6 +139,18 @@ impl UIComponents {
             });
 
             ui.menu_button("工具", |ui| {
+                ui.menu_button("模组类型", |ui| {
+                    if ui.radio_value(&mut state.project.mod_type, crate::models::ModType::Music, "音乐模组").clicked() {
+                        ui.close_menu();
+                    }
+                    if ui.radio_value(&mut state.project.mod_type, crate::models::ModType::Video, "视频模组").clicked() {
+                        ui.close_menu();
+                    }
+                    if ui.radio_value(&mut state.project.mod_type, crate::models::ModType::Combined, "组合模组").clicked() {
+                        ui.close_menu();
+                    }
+                });
+                ui.separator();
                 if ui.button("构建插件...").clicked() {
                     if let Some(pbo_path) = FileOperations::select_pbo_file() {
                         Self::build_addon(state, &pbo_path);
@@ -158,12 +170,26 @@ impl UIComponents {
                     state.show_audio_converter = true;
                     ui.close_menu();
                 }
+                if ui.button("视频格式转换...").clicked() {
+                    state.show_video_converter = true;
+                    ui.close_menu();
+                }
+                ui.separator();
+                if ui.button("FFmpeg 插件管理...").clicked() {
+                    state.show_ffmpeg_plugin = true;
+                    ui.close_menu();
+                }
                 if ui.button("轨道计数").clicked() {
                     state.show_track_count = true;
                     ui.close_menu();
                 }
                 if ui.button("清空所有轨道").clicked() {
                     state.clear_tracks();
+                    state.file_operation_message = None; // 清除提示信息
+                    ui.close_menu();
+                }
+                if ui.button("清空所有视频").clicked() {
+                    state.clear_videos();
                     state.file_operation_message = None; // 清除提示信息
                     ui.close_menu();
                 }
@@ -184,93 +210,235 @@ impl UIComponents {
             .max_height(ui.available_height() - 50.0)
             .show(ui, |ui| {
                 let mut selected_track = state.selected_track;
+                let mut selected_video = state.selected_video;
                 
-                if state.tracks.is_empty() {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(20.0);
-                        ui.label("暂无轨道，点击'添加歌曲'按钮选择OGG音频文件");
-                        ui.add_space(10.0);
-                        ui.label("注意：仅支持OGG格式的音频文件");
-                        ui.add_space(20.0);
-                    });
-                } else {
-                    // 显示轨道统计信息
-                    let track_info = state.get_track_duplicate_info();
-                    if track_info.contains("⚠️") {
-                        ui.colored_label(egui::Color32::from_rgb(255, 165, 0), &track_info);
-                    } else {
-                        ui.label(&track_info);
+                // 根据模组类型显示不同的内容
+                match state.project.mod_type {
+                    crate::models::ModType::Music => {
+                        Self::render_music_tracks(ui, state, &mut selected_track);
                     }
-                    ui.add_space(5.0);
-                    ui.separator();
-                    ui.add_space(5.0);
-                    for (i, track) in state.tracks.iter().enumerate() {
-                        let is_selected = selected_track == Some(i);
+                    crate::models::ModType::Video => {
+                        Self::render_video_files(ui, state, &mut selected_video);
+                    }
+                    crate::models::ModType::Combined => {
+                        ui.group(|ui| {
+                            ui.heading("音乐轨道");
+                            ui.add_space(5.0);
+                        });
+                        Self::render_music_tracks(ui, state, &mut selected_track);
                         
-                        let response = ui.selectable_label(
-                            is_selected,
-                            format!("{} ({})", track.display_name(), track.duration)
-                        );
-
-                        if response.clicked() {
-                            selected_track = Some(i);
-                        }
-
-                        // 双击编辑轨道
-                        if response.double_clicked() {
-                            state.selected_track = Some(i);
-                            state.show_track_editor = true;
-                        }
+                        ui.add_space(10.0);
+                        
+                        ui.group(|ui| {
+                            ui.heading("视频文件");
+                            ui.add_space(5.0);
+                        });
+                        Self::render_video_files(ui, state, &mut selected_video);
                     }
                 }
                 
                 state.selected_track = selected_track;
+                state.selected_video = selected_video;
             });
+    }
+
+    /// 渲染音乐轨道
+    fn render_music_tracks(ui: &mut egui::Ui, state: &mut AppState, selected_track: &mut Option<usize>) {
+        if state.tracks.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space(20.0);
+                ui.label("暂无音乐轨道，点击'添加OGG歌曲'按钮选择OGG音频文件");
+                ui.add_space(10.0);
+                ui.label("注意：仅支持OGG格式的音频文件");
+                ui.add_space(20.0);
+            });
+        } else {
+            // 显示轨道统计信息
+            let track_info = state.get_track_duplicate_info();
+            if track_info.contains("⚠️") {
+                ui.colored_label(egui::Color32::from_rgb(255, 165, 0), &track_info);
+            } else {
+                ui.label(&track_info);
+            }
+            ui.add_space(5.0);
+            ui.separator();
+            ui.add_space(5.0);
+            for (i, track) in state.tracks.iter().enumerate() {
+                let is_selected = *selected_track == Some(i);
+                
+                let response = ui.selectable_label(
+                    is_selected,
+                    format!("🎵 {} ({}秒)", track.display_name(), track.duration)
+                );
+
+                if response.clicked() {
+                    *selected_track = Some(i);
+                    state.selected_video = None; // 清除视频选择
+                }
+
+                // 双击编辑轨道
+                if response.double_clicked() {
+                    state.selected_track = Some(i);
+                    state.show_track_editor = true;
+                }
+            }
+        }
+    }
+
+    /// 渲染视频文件
+    fn render_video_files(ui: &mut egui::Ui, state: &mut AppState, selected_video: &mut Option<usize>) {
+        if state.video_files.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space(20.0);
+                ui.label("暂无视频文件，点击'添加视频文件'按钮选择视频文件");
+                ui.add_space(10.0);
+                ui.label("支持格式：MP4, AVI, MOV, MKV, WMV, FLV, WebM等");
+                ui.add_space(20.0);
+            });
+        } else {
+            // 显示视频统计信息
+            let video_count = state.video_count();
+            ui.label(format!("视频文件数: {}", video_count));
+            ui.add_space(5.0);
+            ui.separator();
+            ui.add_space(5.0);
+            for (i, video) in state.video_files.iter().enumerate() {
+                let is_selected = *selected_video == Some(i);
+                
+                let response = ui.selectable_label(
+                    is_selected,
+                    format!("🎬 {} ({}x{}, {}秒)", 
+                        video.display_name(), 
+                        video.resolution.0, 
+                        video.resolution.1, 
+                        video.duration)
+                );
+
+                if response.clicked() {
+                    *selected_video = Some(i);
+                    state.selected_track = None; // 清除轨道选择
+                }
+            }
+        }
     }
 
     /// 渲染底部按钮
     pub fn render_bottom_buttons(ui: &mut egui::Ui, state: &mut AppState) {
         ui.horizontal(|ui| {
-            if ui.button("添加OGG歌曲").clicked() {
-                if let Some(paths) = FileOperations::select_audio_files() {
-                    // 使用多线程处理音频加载
-                    state.task_manager.start_task(crate::models::TaskType::AudioLoad, paths.len());
-                    // 这里需要从外部传入 task_processor，暂时使用简单版本
-                    match FileOperations::load_audio_files(paths, &state.project.class_name) {
-                        Ok(tracks) => {
-                            let track_count = tracks.len();
-                            info!("开始添加 {} 个轨道", track_count);
-                            
-                            // 使用重复检测添加轨道
-                            let (added_count, duplicate_count) = state.add_tracks_with_duplicate_check(tracks);
-                            
-                            // 设置提示信息
-                            if duplicate_count > 0 {
-                                state.file_operation_message = Some(format!("添加了 {} 个轨道，跳过了 {} 个重复文件", added_count, duplicate_count));
-                            } else if added_count > 0 {
-                                state.file_operation_message = Some(format!("成功添加了 {} 个轨道", added_count));
-                            }
-                            
-                            info!("添加了 {} 个轨道，跳过了 {} 个重复，当前总轨道数: {}", added_count, duplicate_count, state.track_count());
-                            state.task_manager.complete_task();
-                            // 强制重绘UI
-                            ui.ctx().request_repaint();
-                        }
-                        Err(e) => {
-                            warn!("加载音频文件失败: {}", e);
-                            state.task_manager.fail_task(format!("加载音频文件失败: {}", e));
-                        }
+            // 根据模组类型显示不同的按钮
+            match state.project.mod_type {
+                crate::models::ModType::Music => {
+                    if ui.button("添加OGG歌曲").clicked() {
+                        Self::add_audio_files(ui, state);
                     }
+                    
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("删除歌曲").clicked() {
+                            state.remove_selected_track();
+                            state.file_operation_message = None; // 清除提示信息
+                        }
+                    });
+                }
+                crate::models::ModType::Video => {
+                    if ui.button("添加视频文件").clicked() {
+                        Self::add_video_files(ui, state);
+                    }
+                    
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("删除视频").clicked() {
+                            state.remove_selected_video();
+                            state.file_operation_message = None; // 清除提示信息
+                        }
+                    });
+                }
+                crate::models::ModType::Combined => {
+                    if ui.button("添加OGG歌曲").clicked() {
+                        Self::add_audio_files(ui, state);
+                    }
+                    if ui.button("添加视频文件").clicked() {
+                        Self::add_video_files(ui, state);
+                    }
+                    
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("删除选中").clicked() {
+                            if state.selected_track.is_some() {
+                                state.remove_selected_track();
+                            } else if state.selected_video.is_some() {
+                                state.remove_selected_video();
+                            }
+                            state.file_operation_message = None; // 清除提示信息
+                        }
+                    });
                 }
             }
-
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("删除歌曲").clicked() {
-                    state.remove_selected_track();
-                    state.file_operation_message = None; // 清除提示信息
-                }
-            });
         });
+    }
+
+    /// 添加音频文件
+    fn add_audio_files(ui: &mut egui::Ui, state: &mut AppState) {
+        if let Some(paths) = FileOperations::select_audio_files() {
+            // 使用多线程处理音频加载
+            state.task_manager.start_task(crate::models::TaskType::AudioLoad, paths.len());
+            // 这里需要从外部传入 task_processor，暂时使用简单版本
+            match FileOperations::load_audio_files(paths, &state.project.class_name) {
+                Ok(tracks) => {
+                    let track_count = tracks.len();
+                    info!("开始添加 {} 个轨道", track_count);
+                    
+                    // 使用重复检测添加轨道
+                    let (added_count, duplicate_count) = state.add_tracks_with_duplicate_check(tracks);
+                    
+                    // 设置提示信息
+                    if duplicate_count > 0 {
+                        state.file_operation_message = Some(format!("添加了 {} 个轨道，跳过了 {} 个重复文件", added_count, duplicate_count));
+                    } else if added_count > 0 {
+                        state.file_operation_message = Some(format!("成功添加了 {} 个轨道", added_count));
+                    }
+                    
+                    info!("添加了 {} 个轨道，跳过了 {} 个重复，当前总轨道数: {}", added_count, duplicate_count, state.track_count());
+                    state.task_manager.complete_task();
+                    // 强制重绘UI
+                    ui.ctx().request_repaint();
+                }
+                Err(e) => {
+                    warn!("加载音频文件失败: {}", e);
+                    state.task_manager.fail_task(format!("加载音频文件失败: {}", e));
+                }
+            }
+        }
+    }
+
+    /// 添加视频文件
+    fn add_video_files(ui: &mut egui::Ui, state: &mut AppState) {
+        if let Some(paths) = FileOperations::select_video_files() {
+            // 使用多线程处理视频加载
+            state.task_manager.start_task(crate::models::TaskType::AudioLoad, paths.len()); // 复用AudioLoad任务类型
+            match FileOperations::load_video_files(paths, &state.project.class_name) {
+                Ok(videos) => {
+                    let video_count = videos.len();
+                    info!("开始添加 {} 个视频文件", video_count);
+                    
+                    // 使用重复检测添加视频
+                    let (added_count, duplicate_count) = state.add_videos_with_duplicate_check(videos);
+                    
+                    // 设置提示信息
+                    if duplicate_count > 0 {
+                        state.file_operation_message = Some(format!("添加了 {} 个视频文件，跳过了 {} 个重复文件", added_count, duplicate_count));
+                    } else if added_count > 0 {
+                        state.file_operation_message = Some(format!("成功添加了 {} 个视频文件", added_count));
+                    }
+                    
+                    info!("添加了 {} 个视频文件，跳过了 {} 个重复，当前总视频数: {}", added_count, duplicate_count, state.video_count());
+                    state.task_manager.complete_task();
+                    // 强制重绘UI
+                    ui.ctx().request_repaint();
+                }
+                Err(e) => {
+                    warn!("加载视频文件失败: {}", e);
+                    state.task_manager.fail_task(format!("加载视频文件失败: {}", e));
+                }
+            }
+        }
     }
 
     /// 显示项目设置对话框
@@ -1601,6 +1769,8 @@ impl UIComponents {
                                 TaskType::ModExport => "模组导出",
                                 TaskType::AudioLoad => "音频加载",
                                 TaskType::AudioConvert => "音频格式转换",
+                                TaskType::VideoConvert => "视频格式转换",
+                                TaskType::VideoModExport => "视频模组导出",
                             });
                             
                             ui.add_space(5.0);
@@ -1732,7 +1902,7 @@ impl UIComponents {
                             ui.horizontal(|ui| {
                                 if ui.button("选择音频文件 (支持多选)").clicked() {
                                     if let Some(files) = rfd::FileDialog::new()
-                                        .add_filter("音频文件", &["mp3", "wav", "flac", "aac", "m4a", "wma", "ogg", "opus", "mp4", "mkv", "avi", "mov", "webm", "3gp", "amr"])
+                                        .add_filter("音频文件", &["mp3", "wav", "flac", "aac", "m4a", "wma", "ogg", "opus"])
                                         .set_title("选择要转换的音频文件")
                                         .pick_files()
                                     {
@@ -1853,39 +2023,56 @@ impl UIComponents {
                             ui.heading("支持格式");
                             ui.add_space(5.0);
                             ui.label("输入格式: MP3, WAV, FLAC, AAC, M4A, WMA, OGG, OPUS");
-                            ui.label("输入格式: MP4, MKV, AVI, MOV, WEBM, 3GP, AMR 等");
                             ui.label("输出格式: OGG (Vorbis 编码，质量等级 5)");
-                            ui.label("注意: 需要 FFmpeg 支持，请确保已安装 FFmpeg");
+                            
+                            // FFmpeg状态显示
+                            ui.add_space(5.0);
+                            ui.separator();
+                            ui.add_space(5.0);
+                            
+                            let ffmpeg_status = match crate::ffmpeg_plugin::FFmpegPlugin::new() {
+                                Ok(plugin) => {
+                                    if plugin.check_ffmpeg_available() {
+                                        if let Ok(version) = plugin.get_ffmpeg_version() {
+                                            (true, format!("✓ FFmpeg 已就绪 - {}", version))
+                                        } else {
+                                            (true, "✓ FFmpeg 已就绪".to_string())
+                                        }
+                                    } else {
+                                        (false, "✗ FFmpeg 未就绪 - 请通过插件管理下载或配置".to_string())
+                                    }
+                                }
+                                Err(_) => (false, "✗ 无法初始化 FFmpeg 插件".to_string())
+                            };
+                            
+                            if ffmpeg_status.0 {
+                                ui.colored_label(egui::Color32::from_rgb(0, 150, 0), &ffmpeg_status.1);
+                            } else {
+                                ui.colored_label(egui::Color32::from_rgb(200, 50, 50), &ffmpeg_status.1);
+                            }
                         });
                     });
                     
                     ui.add_space(15.0);
                     
                     // 按钮区域
-                    ui.horizontal(|ui| {
-                        let can_convert = !state.audio_convert_selected_files.is_empty() 
-                            && state.audio_convert_output_directory.is_some();
-                        
-                        if ui.add_enabled(can_convert, egui::Button::new("开始转换")).clicked() {
-                            should_convert = true;
-                        }
-                        
-                        if ui.button("检查FFmpeg").clicked() {
-                            // 检查 FFmpeg 是否可用，如果不可用则显示下载对话框
-                            match crate::audio_converter::AudioConverter::new() {
-                                Ok(_) => {
-                                    state.audio_convert_result = Some("FFmpeg 已安装并可用！".to_string());
-                                    state.show_audio_convert_result = true;
-                                }
-                                Err(_) => {
-                                    state.show_ffmpeg_download = true;
-                                }
+                        ui.horizontal(|ui| {
+                            let ffmpeg_available = match crate::ffmpeg_plugin::FFmpegPlugin::new() {
+                                Ok(plugin) => plugin.check_ffmpeg_available(),
+                                Err(_) => false,
+                            };
+                            
+                            let can_convert = !state.audio_convert_selected_files.is_empty() 
+                                && state.audio_convert_output_directory.is_some()
+                                && ffmpeg_available;
+                            
+                            if ui.add_enabled(can_convert, egui::Button::new("开始转换")).clicked() {
+                                should_convert = true;
                             }
-                        }
-                        
-                        if ui.button("手动选择FFmpeg").clicked() {
-                            state.show_manual_path_selection = true;
-                        }
+                            
+                            if ui.button("FFmpeg插件管理").clicked() {
+                                state.show_ffmpeg_plugin = true;
+                            }
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("关闭").clicked() {
@@ -1957,6 +2144,288 @@ impl UIComponents {
         if should_close {
             state.show_audio_convert_result = false;
             state.audio_convert_result = None;
+        }
+    }
+
+    /// 显示视频转换对话框
+    pub fn show_video_converter_dialog(ctx: &egui::Context, state: &mut AppState) {
+        if !state.show_video_converter {
+            return;
+        }
+
+        let safe_pos = Self::calculate_safe_position(ctx, [600.0, 500.0].into(), [100.0, 100.0].into());
+        let mut should_close = false;
+        let mut should_convert = false;
+        
+        egui::Window::new("视频格式转换")
+            .open(&mut state.show_video_converter)
+            .default_pos(safe_pos)
+            .resizable(true)
+            .default_size([600.0, 500.0])
+            .min_size([500.0, 300.0])
+            .max_size([800.0, 700.0])
+            .show(ctx, |ui| {
+                ui.set_min_height(ui.available_height());
+                
+                ui.vertical(|ui| {
+                    ui.heading("视频格式转换");
+                    ui.separator();
+                    
+                    // 文件选择区域
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.heading("文件选择");
+                            ui.add_space(5.0);
+                            
+                            ui.horizontal(|ui| {
+                                if ui.button("选择视频文件 (支持多选)").clicked() {
+                                    if let Some(files) = rfd::FileDialog::new()
+                                        .add_filter("视频文件", &["mp4", "avi", "mov", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "ogv"])
+                                        .set_title("选择要转换的视频文件")
+                                        .pick_files()
+                                    {
+                                        // 防重复添加文件，并提供反馈
+                                        let mut added_count = 0;
+                                        let mut duplicate_count = 0;
+                                        
+                                        for file in files {
+                                            if !state.video_convert_selected_files.contains(&file) {
+                                                state.video_convert_selected_files.push(file.clone());
+                                                added_count += 1;
+                                            } else {
+                                                duplicate_count += 1;
+                                            }
+                                        }
+                                        
+                                        // 显示添加结果
+                                        if duplicate_count > 0 {
+                                            state.file_operation_message = Some(format!("添加了 {} 个文件，跳过了 {} 个重复文件", added_count, duplicate_count));
+                                        } else if added_count > 0 {
+                                            state.file_operation_message = Some(format!("成功添加了 {} 个文件", added_count));
+                                        }
+                                        
+                                        if state.video_convert_output_directory.is_none() && !state.video_convert_selected_files.is_empty() {
+                                            state.video_convert_output_directory = state.video_convert_selected_files[0].parent().map(|p| p.to_path_buf());
+                                        }
+                                    }
+                                }
+                                
+                                if ui.button("清空列表").clicked() {
+                                    state.video_convert_selected_files.clear();
+                                    state.file_operation_message = None; // 清除提示信息
+                                }
+                            });
+                            
+                            ui.add_space(5.0);
+                            
+                            // 显示文件操作提示信息
+                            if let Some(ref message) = state.file_operation_message {
+                                ui.colored_label(egui::Color32::from_rgb(0, 150, 0), message);
+                                ui.add_space(5.0);
+                            }
+                            
+                            if state.video_convert_selected_files.is_empty() {
+                                ui.label("未选择任何文件");
+                            } else {
+                                // 计算唯一文件数量
+                                let total_files = state.video_convert_selected_files.len();
+                                let unique_files: std::collections::HashSet<_> = state.video_convert_selected_files.iter().collect();
+                                let unique_count = unique_files.len();
+                                let duplicate_count = total_files - unique_count;
+                                
+                                if duplicate_count > 0 {
+                                    ui.colored_label(egui::Color32::from_rgb(255, 165, 0), 
+                                        format!("⚠️ 已选择 {} 个文件（其中 {} 个重复）:", total_files, duplicate_count));
+                                } else {
+                                    ui.label(format!("已选择 {} 个文件:", total_files));
+                                }
+                                ui.add_space(5.0);
+                                
+                                egui::ScrollArea::vertical()
+                                    .max_height(150.0)
+                                    .show(ui, |ui| {
+                                        let mut indices_to_remove = Vec::new();
+                                        
+                                        for (i, file) in state.video_convert_selected_files.iter().enumerate() {
+                                            ui.horizontal(|ui| {
+                                                ui.label(format!("{}. {}", i + 1, file.file_name().unwrap_or_default().to_string_lossy()));
+                                                
+                                                if ui.small_button("删除").clicked() {
+                                                    indices_to_remove.push(i);
+                                                }
+                                            });
+                                        }
+                                        
+                                        // 删除选中的文件
+                                        for &index in indices_to_remove.iter().rev() {
+                                            state.video_convert_selected_files.remove(index);
+                                        }
+                                    });
+                            }
+                        });
+                    });
+                    
+                    ui.add_space(10.0);
+                    
+                    // 输出目录选择区域
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.heading("输出目录");
+                            ui.add_space(5.0);
+                            
+                            ui.horizontal(|ui| {
+                                ui.label("输出目录:");
+                                if let Some(ref output_dir) = state.video_convert_output_directory {
+                                    ui.label(output_dir.to_string_lossy().to_string());
+                                } else {
+                                    ui.label("未选择输出目录");
+                                }
+                                
+                                if ui.button("选择输出目录").clicked() {
+                                    if let Some(dir) = rfd::FileDialog::new()
+                                        .set_title("选择输出目录")
+                                        .pick_folder()
+                                    {
+                                        state.video_convert_output_directory = Some(dir);
+                                    }
+                                }
+                            });
+                        });
+                    });
+                    
+                    ui.add_space(10.0);
+                    
+                    // 转换说明
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.heading("转换说明");
+                            ui.add_space(5.0);
+                            ui.label("• 将视频文件转换为OGV格式，适用于武装突袭三");
+                            ui.label("• 转换后的文件将保存到指定的输出目录");
+                            ui.label("• 转换过程中会保持原始视频的质量和分辨率");
+                            ui.label("• 支持批量转换多个文件");
+                            
+                            // FFmpeg状态显示
+                            ui.add_space(5.0);
+                            ui.separator();
+                            ui.add_space(5.0);
+                            
+                            let ffmpeg_status = match crate::ffmpeg_plugin::FFmpegPlugin::new() {
+                                Ok(plugin) => {
+                                    if plugin.check_ffmpeg_available() {
+                                        if let Ok(version) = plugin.get_ffmpeg_version() {
+                                            (true, format!("✓ FFmpeg 已就绪 - {}", version))
+                                        } else {
+                                            (true, "✓ FFmpeg 已就绪".to_string())
+                                        }
+                                    } else {
+                                        (false, "✗ FFmpeg 未就绪 - 请通过插件管理下载或配置".to_string())
+                                    }
+                                }
+                                Err(_) => (false, "✗ 无法初始化 FFmpeg 插件".to_string())
+                            };
+                            
+                            if ffmpeg_status.0 {
+                                ui.colored_label(egui::Color32::from_rgb(0, 150, 0), &ffmpeg_status.1);
+                            } else {
+                                ui.colored_label(egui::Color32::from_rgb(200, 50, 50), &ffmpeg_status.1);
+                            }
+                        });
+                    });
+                    
+                    ui.add_space(20.0);
+                    
+                    // 按钮区域
+                    ui.horizontal(|ui| {
+                        let ffmpeg_available = match crate::ffmpeg_plugin::FFmpegPlugin::new() {
+                            Ok(plugin) => plugin.check_ffmpeg_available(),
+                            Err(_) => false,
+                        };
+                        
+                        let can_convert = !state.video_convert_selected_files.is_empty() 
+                            && state.video_convert_output_directory.is_some()
+                            && ffmpeg_available;
+                        
+                        if ui.add_enabled(can_convert, egui::Button::new("开始转换")).clicked() {
+                            should_convert = true;
+                            should_close = true;
+                        }
+                        
+                        if ui.add_enabled(can_convert, egui::Button::new("快速转换")).clicked() {
+                            should_convert = true;
+                            should_close = true;
+                        }
+                        
+                        if ui.button("FFmpeg插件管理").clicked() {
+                            state.show_ffmpeg_plugin = true;
+                        }
+                        
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("取消").clicked() {
+                                should_close = true;
+                            }
+                        });
+                    });
+                });
+            });
+        
+        if should_convert {
+            state.should_convert_video = true;
+        }
+        
+        if should_close {
+            state.show_video_converter = false;
+        }
+    }
+
+    /// 显示视频转换结果对话框
+    pub fn show_video_convert_result_dialog(ctx: &egui::Context, state: &mut AppState) {
+        if !state.show_video_convert_result {
+            return;
+        }
+
+        let safe_pos = Self::calculate_safe_position(ctx, [600.0, 400.0].into(), [100.0, 100.0].into());
+        let mut should_close = false;
+        
+        egui::Window::new("视频转换结果")
+            .open(&mut state.show_video_convert_result)
+            .default_pos(safe_pos)
+            .resizable(true)
+            .default_size([600.0, 400.0])
+            .min_size([400.0, 200.0])
+            .max_size([800.0, 600.0])
+            .show(ctx, |ui| {
+                ui.set_min_height(ui.available_height());
+                
+                if let Some(ref result) = state.video_convert_result {
+                    Self::show_scrollable_result_content(
+                        ui,
+                        result,
+                        "转换结果",
+                        &["转换完成！", "转换失败！"],
+                        &[],
+                        &["输出目录:", "统计信息:", "路径:"],
+                    );
+                }
+                
+                ui.add_space(10.0);
+                
+                // 按钮区域
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("确定").clicked() {
+                        should_close = true;
+                    }
+                    
+                    if ui.button("复制结果").clicked() {
+                        if let Some(ref result) = state.video_convert_result {
+                            ui.output_mut(|o| o.copied_text = result.clone());
+                        }
+                    }
+                });
+            });
+        
+        if should_close {
+            state.show_video_convert_result = false;
         }
     }
 
@@ -2265,6 +2734,143 @@ impl UIComponents {
             {
                 state.manual_ffmpeg_path = Some(file);
             }
+        }
+    }
+
+    /// 显示 FFmpeg 插件管理对话框
+    pub fn show_ffmpeg_plugin_dialog(ctx: &egui::Context, state: &mut AppState) {
+        if !state.show_ffmpeg_plugin {
+            return;
+        }
+
+        let safe_pos = Self::calculate_safe_position(ctx, [600.0, 500.0].into(), [100.0, 100.0].into());
+        let mut should_close = false;
+        
+        egui::Window::new("FFmpeg 插件管理")
+            .open(&mut state.show_ffmpeg_plugin)
+            .default_pos(safe_pos)
+            .resizable(true)
+            .default_size([600.0, 500.0])
+            .min_size([500.0, 400.0])
+            .max_size([800.0, 700.0])
+            .show(ctx, |ui| {
+                ui.set_min_height(ui.available_height());
+                
+                ui.vertical(|ui| {
+                    ui.heading("FFmpeg 插件管理");
+                    ui.separator();
+                    
+                    // 获取FFmpeg状态
+                    let ffmpeg_plugin = match crate::ffmpeg_plugin::FFmpegPlugin::new() {
+                        Ok(plugin) => plugin,
+                        Err(e) => {
+                            ui.colored_label(egui::Color32::from_rgb(200, 50, 50), 
+                                format!("无法初始化FFmpeg插件: {}", e));
+                            ui.add_space(10.0);
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("关闭").clicked() {
+                                    should_close = true;
+                                }
+                            });
+                            return;
+                        }
+                    };
+
+                    let status = ffmpeg_plugin.get_status();
+                    
+                    // 状态信息
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.heading("当前状态");
+                            ui.add_space(5.0);
+                            
+                            if status.available {
+                                ui.colored_label(egui::Color32::from_rgb(0, 150, 0), "✓ FFmpeg 可用");
+                                if let Some(ref path) = status.path {
+                                    ui.label(format!("路径: {}", path.display()));
+                                }
+                                if let Some(ref version) = status.version {
+                                    ui.label(format!("版本: {}", version));
+                                }
+                            } else {
+                                ui.colored_label(egui::Color32::from_rgb(200, 50, 50), "✗ FFmpeg 不可用");
+                                ui.label("需要下载或配置FFmpeg才能使用音频/视频转换功能");
+                            }
+                            
+                            ui.add_space(5.0);
+                            ui.label(format!("配置文件: {}", status.config_path.display()));
+                        });
+                    });
+                    
+                    ui.add_space(10.0);
+                    
+                    // 操作按钮
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.heading("操作");
+                            ui.add_space(5.0);
+                            
+                            if !status.available {
+                                if ui.button("下载 FFmpeg").clicked() {
+                                    state.show_ffmpeg_download = true;
+                                    should_close = true;
+                                }
+                            }
+                            
+                            if ui.button("手动选择 FFmpeg 路径").clicked() {
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .add_filter("可执行文件", &["exe"])
+                                    .set_title("选择 FFmpeg 可执行文件")
+                                    .pick_file()
+                                {
+                                    if let Ok(mut plugin) = crate::ffmpeg_plugin::FFmpegPlugin::new() {
+                                        match plugin.set_ffmpeg_path(path.clone()) {
+                                            Ok(_) => {
+                                                state.file_operation_message = Some(format!("FFmpeg路径设置成功: {}", path.display()));
+                                            }
+                                            Err(e) => {
+                                                state.file_operation_message = Some(format!("设置FFmpeg路径失败: {}", e));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if ui.button("重置配置").clicked() {
+                                if let Ok(mut plugin) = crate::ffmpeg_plugin::FFmpegPlugin::new() {
+                                    if let Err(e) = plugin.reset_config() {
+                                        state.file_operation_message = Some(format!("重置配置失败: {}", e));
+                                    } else {
+                                        state.file_operation_message = Some("配置已重置".to_string());
+                                    }
+                                }
+                            }
+                        });
+                    });
+                    
+                    ui.add_space(20.0);
+                    
+                    // 显示文件操作提示信息
+                    if let Some(ref message) = state.file_operation_message {
+                        ui.colored_label(egui::Color32::from_rgb(0, 150, 0), message);
+                        ui.add_space(5.0);
+                    }
+                    
+                    // 按钮区域
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("关闭").clicked() {
+                            should_close = true;
+                        }
+                        
+                        if ui.button("刷新状态").clicked() {
+                            ui.ctx().request_repaint();
+                        }
+                    });
+                });
+            });
+        
+        if should_close {
+            state.show_ffmpeg_plugin = false;
         }
     }
 }

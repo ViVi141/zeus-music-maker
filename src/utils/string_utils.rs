@@ -28,4 +28,20 @@ impl StringUtils {
             safe_name
         }
     }
+
+    /// 从文件路径生成轨道名称
+    pub fn generate_track_name_from_path(path: &std::path::Path, index: usize) -> String {
+        if let Some(filename) = path.file_stem() {
+            let name = filename.to_string_lossy().to_string();
+            Self::safe_filename(&name, index)
+        } else {
+            format!("track_{:03}", index)
+        }
+    }
+
+    /// 生成类名
+    pub fn generate_class_name(track_name: &str, base_class: &str, _index: usize) -> String {
+        let safe_track_name = Self::to_ascii_safe(track_name, '_');
+        format!("{}_{}", base_class, safe_track_name)
+    }
 }

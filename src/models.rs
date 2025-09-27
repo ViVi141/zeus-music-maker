@@ -66,6 +66,63 @@ impl Track {
 
 }
 
+/// 模组类型
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ModType {
+    Music,
+    Video,
+    Combined,
+}
+
+/// 视频文件数据模型
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoFile {
+    /// 视频名称（在游戏中显示）
+    pub video_name: String,
+    /// 类名（用于Arma 3配置）
+    pub class_name: String,
+    /// 标签（可选，会显示为[Tag] Video Name）
+    pub tag: String,
+    /// 文件路径
+    pub path: PathBuf,
+    /// 时长（秒）
+    pub duration: u32,
+    /// 分辨率
+    pub resolution: (u32, u32),
+    /// 文件大小（字节）
+    pub file_size: u64,
+}
+
+impl VideoFile {
+    pub fn new(path: PathBuf, video_name: String, class_name: String) -> Self {
+        Self {
+            video_name,
+            class_name,
+            tag: String::new(),
+            path,
+            duration: 0,
+            resolution: (0, 0),
+            file_size: 0,
+        }
+    }
+
+    /// 获取显示名称（包含标签）
+    pub fn display_name(&self) -> String {
+        if self.tag.is_empty() {
+            self.video_name.clone()
+        } else {
+            format!("[{}] {}", self.tag, self.video_name)
+        }
+    }
+
+    /// 设置视频信息
+    pub fn set_video_info(&mut self, duration: u32, resolution: (u32, u32), file_size: u64) {
+        self.duration = duration;
+        self.resolution = resolution;
+        self.file_size = file_size;
+    }
+}
+
 /// 项目设置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectSettings {
@@ -79,6 +136,8 @@ pub struct ProjectSettings {
     pub use_default_logo: bool,
     /// 类名（从模组名称生成）
     pub class_name: String,
+    /// 模组类型
+    pub mod_type: ModType,
 }
 
 impl Default for ProjectSettings {
@@ -89,6 +148,7 @@ impl Default for ProjectSettings {
             logo_path: None,
             use_default_logo: true,
             class_name: "MyMusicClass".to_string(),
+            mod_type: ModType::Music,
         }
     }
 }
@@ -143,6 +203,8 @@ pub enum TaskType {
     ModExport,
     AudioLoad,
     AudioConvert,
+    VideoConvert,
+    VideoModExport,
 }
 
 /// 任务状态
@@ -322,8 +384,12 @@ pub struct AppState {
     pub project: ProjectSettings,
     /// 轨道列表
     pub tracks: Vec<Track>,
+    /// 视频文件列表
+    pub video_files: Vec<VideoFile>,
     /// 选中的轨道索引
     pub selected_track: Option<usize>,
+    /// 选中的视频文件索引
+    pub selected_video: Option<usize>,
     /// 导出设置
     pub export_settings: ExportSettings,
     /// 是否显示项目设置对话框
@@ -397,6 +463,24 @@ pub struct AppState {
     pub manual_ffmpeg_path: Option<std::path::PathBuf>,
     /// 是否显示手动路径选择对话框
     pub show_manual_path_selection: bool,
+    /// 是否显示视频转换对话框
+    pub show_video_converter: bool,
+    /// 视频转换选中的文件
+    pub video_convert_selected_files: Vec<std::path::PathBuf>,
+    /// 视频转换输出目录
+    pub video_convert_output_directory: Option<std::path::PathBuf>,
+    /// 视频转换结果
+    pub video_convert_result: Option<String>,
+    /// 是否显示视频转换结果对话框
+    pub show_video_convert_result: bool,
+    /// 是否执行视频转换
+    pub should_convert_video: bool,
+    /// 是否显示FFmpeg插件管理对话框
+    pub show_ffmpeg_plugin: bool,
+    /// FFmpeg镜像源
+    pub ffmpeg_mirror_source: crate::ffmpeg_plugin::MirrorSource,
+    /// FFmpeg自动下载选项
+    pub ffmpeg_auto_download: bool,
     /// 文件操作提示信息
     pub file_operation_message: Option<String>,
     /// 任务管理器
@@ -475,10 +559,61 @@ impl AppState {
     pub fn track_count(&self) -> usize {
         self.tracks.len()
     }
-    
-    
-    
-    
+
+    /// 获取视频文件数量
+    pub fn video_count(&self) -> usize {
+        self.video_files.len()
+    }
+
+    /// 防重复添加视频文件（基于文件路径）
+    pub fn add_video_with_duplicate_check(&mut self, video: VideoFile) -> bool {
+        // 检查是否已存在相同路径的视频文件
+        if self.video_files.iter().any(|v| v.path == video.path) {
+            return false; // 重复，未添加
+        }
+        self.video_files.push(video);
+        true // 成功添加
+    }
+
+    /// 批量添加视频文件（带重复检测）
+    pub fn add_videos_with_duplicate_check(&mut self, videos: Vec<VideoFile>) -> (usize, usize) {
+        let mut added_count = 0;
+        let mut duplicate_count = 0;
+        
+        for video in videos {
+            if self.add_video_with_duplicate_check(video) {
+                added_count += 1;
+            } else {
+                duplicate_count += 1;
+            }
+        }
+        
+        (added_count, duplicate_count)
+    }
+
+    /// 移除选中的视频文件
+    pub fn remove_selected_video(&mut self) {
+        if let Some(index) = self.selected_video {
+            if index < self.video_files.len() {
+                self.video_files.remove(index);
+                // 调整选中索引，如果删除的是最后一个，则选择前一个
+                if index >= self.video_files.len() && !self.video_files.is_empty() {
+                    self.selected_video = Some(index - 1);
+                } else if self.video_files.is_empty() {
+                    self.selected_video = None;
+                }
+            } else {
+                // 索引越界，清除选中状态
+                self.selected_video = None;
+            }
+        }
+    }
+
+    /// 清空所有视频文件
+    pub fn clear_videos(&mut self) {
+        self.video_files.clear();
+        self.selected_video = None;
+    }
 }
 
 impl Default for AppState {
@@ -486,7 +621,9 @@ impl Default for AppState {
         Self {
             project: ProjectSettings::default(),
             tracks: Vec::new(),
+            video_files: Vec::new(),
             selected_track: None,
+            selected_video: None,
             export_settings: ExportSettings::default(),
             show_project_settings: false,
             show_export_dialog: false,
@@ -523,6 +660,15 @@ impl Default for AppState {
             ffmpeg_download_started: false,
             manual_ffmpeg_path: None,
             show_manual_path_selection: false,
+            show_video_converter: false,
+            video_convert_selected_files: Vec::new(),
+            video_convert_output_directory: None,
+            video_convert_result: None,
+            show_video_convert_result: false,
+            should_convert_video: false,
+            show_ffmpeg_plugin: false,
+            ffmpeg_mirror_source: crate::ffmpeg_plugin::MirrorSource::default(),
+            ffmpeg_auto_download: true,
             file_operation_message: None,
             task_manager: TaskManager::default(),
         }
