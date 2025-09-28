@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>宙斯音乐制作器 - Arma 3 专业音乐/视频模组制作工具</title>
+    <meta name="description" content="专为 Arma 3 设计的专业音乐/视频模组制作工具，支持音频解密、格式转换、PAA图片处理和完整的模组生成功能。">
+    <meta name="keywords" content="Arma 3, 音乐模组, 视频模组, 音乐制作器, 音频解密, 格式转换">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.vivi141.com/">
+    <meta property="og:title" content="宙斯音乐制作器 - Arma 3 专业音乐/视频模组制作工具">
+    <meta property="og:description" content="专为 Arma 3 设计的专业音乐/视频模组制作工具，支持音频解密、格式转换、PAA图片处理和完整的模组生成功能。">
+    <meta property="og:image" content="./assets/og-image.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://www.vivi141.com/">
+    <meta property="twitter:title" content="宙斯音乐制作器 - Arma 3 专业音乐/视频模组制作工具">
+    <meta property="twitter:description" content="专为 Arma 3 设计的专业音乐/视频模组制作工具，支持音频解密、格式转换、PAA图片处理和完整的模组生成功能。">
+    <meta property="twitter:image" content="./assets/og-image.png">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary-color: #64748b;
+            --accent-color: #f59e0b;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --background-color: #f8fafc;
+            --surface-color: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background-color: var(--background-color);
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 2rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.1;
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 20px;
+            margin: 0 auto 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: var(--primary-color);
+            box-shadow: var(--shadow-lg);
+            font-weight: bold;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header .subtitle {
+            font-size: 1.25rem;
+            opacity: 0.9;
+            margin-bottom: 2rem;
+        }
+
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--accent-color);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-md);
+            border: none;
+            cursor: pointer;
+        }
+
+        .download-btn:hover {
+            background: #d97706;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .download-btn:active {
+            transform: translateY(0);
+        }
+
+        .version-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin-left: 1rem;
+        }
+
+        /* Navigation */
+        .nav {
+            background: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .nav-content {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            padding: 1rem 0;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .nav-link:hover {
+            color: var(--primary-color);
+            background: rgba(37, 99, 235, 0.1);
+        }
+
+        /* Main Content */
+        .main {
+            padding: 4rem 0;
+        }
+
+        .section {
+            margin-bottom: 4rem;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .section-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 1.125rem;
+            margin-bottom: 3rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .feature-card {
+            background: var(--surface-color);
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: var(--shadow-md);
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            margin-bottom: 1rem;
+        }
+
+        .feature-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .feature-description {
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Stats Section */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .stat-card {
+            text-align: center;
+            background: var(--surface-color);
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 800;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Format Support */
+        .format-section {
+            background: var(--surface-color);
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--border-color);
+        }
+
+        .format-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .format-tab {
+            padding: 0.75rem 1.5rem;
+            background: transparent;
+            border: 2px solid var(--border-color);
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .format-tab.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .format-content {
+            display: none;
+        }
+
+        .format-content.active {
+            display: block;
+        }
+
+        .format-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .format-item {
+            background: var(--background-color);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .format-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--primary-color);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        /* Screenshots */
+        .screenshots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .screenshot-card {
+            background: var(--surface-color);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .screenshot-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .screenshot-placeholder {
+            height: 200px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+        }
+
+        .screenshot-content {
+            padding: 1.5rem;
+        }
+
+        .screenshot-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .screenshot-description {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        /* Download Section */
+        .download-section {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 4rem 0;
+            text-align: center;
+        }
+
+        .download-section .section-title {
+            color: white;
+            margin-bottom: 1rem;
+        }
+
+        .download-section .section-subtitle {
+            color: rgba(255,255,255,0.9);
+            margin-bottom: 2rem;
+        }
+
+        .download-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-top: 2rem;
+        }
+
+        .download-btn-primary {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .download-btn-secondary {
+            background: transparent;
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .download-btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.5);
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--text-primary);
+            color: white;
+            padding: 3rem 0 2rem;
+            text-align: center;
+        }
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .footer-section h3 {
+            margin-bottom: 1rem;
+            color: var(--accent-color);
+        }
+
+        .footer-section p {
+            color: rgba(255,255,255,0.8);
+            line-height: 1.6;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .footer-link {
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .footer-link:hover {
+            color: var(--accent-color);
+        }
+
+        .footer-bottom {
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 2rem;
+            margin-top: 2rem;
+            color: rgba(255,255,255,0.6);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .header .subtitle {
+                font-size: 1rem;
+            }
+            
+            .nav-content {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .section-title {
+                font-size: 2rem;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .format-tabs {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .download-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .footer-links {
+                flex-direction: column;
+                gap: 1rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 0 15px;
+            }
+            
+            .header {
+                padding: 1.5rem 0;
+            }
+            
+            .header h1 {
+                font-size: 1.75rem;
+            }
+            
+            .main {
+                padding: 2rem 0;
+            }
+            
+            .section {
+                margin-bottom: 2rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Advanced Animations and Effects */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes fadeInRight {
+            from {
+                opacity: 0;
+                transform: translateX(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes slideInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes bounceIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.3);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.05);
+            }
+            70% {
+                transform: scale(0.9);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        @keyframes glow {
+            0%, 100% {
+                box-shadow: 0 0 20px rgba(37, 99, 235, 0.5);
+            }
+            50% {
+                box-shadow: 0 0 30px rgba(37, 99, 235, 0.8), 0 0 40px rgba(37, 99, 235, 0.3);
+            }
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-20px);
+            }
+        }
+
+        @keyframes rotate360 {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes morphing {
+            0%, 100% {
+                border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+            }
+            25% {
+                border-radius: 58% 42% 75% 25% / 76% 46% 54% 24%;
+            }
+            50% {
+                border-radius: 50% 50% 33% 67% / 55% 27% 73% 45%;
+            }
+            75% {
+                border-radius: 33% 67% 58% 42% / 63% 68% 32% 37%;
+            }
+        }
+
+        @keyframes glitch {
+            0% {
+                transform: translate(0);
+            }
+            20% {
+                transform: translate(-2px, 2px);
+            }
+            40% {
+                transform: translate(-2px, -2px);
+            }
+            60% {
+                transform: translate(2px, 2px);
+            }
+            80% {
+                transform: translate(2px, -2px);
+            }
+            100% {
+                transform: translate(0);
+            }
+        }
+
+        @keyframes textGlow {
+            0%, 100% {
+                text-shadow: 0 0 5px rgba(37, 99, 235, 0.5);
+            }
+            50% {
+                text-shadow: 0 0 20px rgba(37, 99, 235, 0.8), 0 0 30px rgba(37, 99, 235, 0.3);
+            }
+        }
+
+        @keyframes typewriter {
+            from {
+                width: 0;
+            }
+            to {
+                width: 100%;
+            }
+        }
+
+        @keyframes blink {
+            50% {
+                border-color: transparent;
+            }
+        }
+
+        /* Particle System */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            overflow: hidden;
+            background: transparent;
+        }
+
+        .particle {
+            position: absolute;
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        .particle:nth-child(odd) {
+            background: linear-gradient(45deg, var(--accent-color), var(--primary-color));
+        }
+
+        /* Floating Elements */
+        .floating-element {
+            position: absolute;
+            opacity: 0.1;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .floating-circle {
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .floating-square {
+            background: linear-gradient(135deg, var(--accent-color), var(--primary-color));
+            animation: float 8s ease-in-out infinite reverse;
+        }
+
+        .floating-triangle {
+            width: 0;
+            height: 0;
+            border-left: 25px solid transparent;
+            border-right: 25px solid transparent;
+            border-bottom: 50px solid var(--primary-color);
+            animation: float 7s ease-in-out infinite;
+        }
+
+        /* 3D Effects */
+        .card-3d {
+            transform-style: preserve-3d;
+            transition: transform 0.6s;
+        }
+
+        .card-3d:hover {
+            transform: rotateY(10deg) rotateX(10deg) translateZ(20px);
+        }
+
+        .feature-card {
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-style: preserve-3d;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px) rotateX(5deg) rotateY(5deg);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15), 0 0 30px rgba(37, 99, 235, 0.2);
+        }
+
+        /* Glitch Effect */
+        .glitch-text {
+            position: relative;
+            display: inline-block;
+        }
+
+        .glitch-text::before,
+        .glitch-text::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.7;
+        }
+
+        .glitch-text::before {
+            animation: glitch 0.3s infinite;
+            color: #ff0040;
+            z-index: -1;
+        }
+
+        .glitch-text::after {
+            animation: glitch 0.3s infinite reverse;
+            color: #00ffff;
+            z-index: -2;
+        }
+
+        .glitch-text:hover::before,
+        .glitch-text:hover::after {
+            animation-duration: 0.1s;
+        }
+
+        /* Typing Animation */
+        .typing-text {
+            overflow: hidden;
+            border-right: 2px solid var(--primary-color);
+            white-space: nowrap;
+            animation: typewriter 3s steps(40, end), blink 0.75s step-end infinite;
+        }
+
+        /* Morphing Shapes */
+        .morphing-shape {
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            animation: morphing 8s ease-in-out infinite;
+            opacity: 0.1;
+            position: absolute;
+            pointer-events: none;
+        }
+
+        /* Animated Background */
+        .animated-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            opacity: 0.05;
+            z-index: -1;
+        }
+
+        @keyframes gradientShift {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        /* Pulse Effect */
+        .pulse-effect {
+            animation: pulse 2s infinite;
+        }
+
+        /* Glow Effect */
+        .glow-effect {
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        /* Rotate Effect */
+        .rotate-effect {
+            animation: rotate360 10s linear infinite;
+        }
+
+        /* Text Glow */
+        .text-glow {
+            animation: textGlow 2s ease-in-out infinite alternate;
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Advanced Hover Effects */
+        .hover-lift {
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .hover-lift:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        /* Stagger Animation */
+        .stagger-animation > * {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeInUp 0.6s ease-out forwards;
+        }
+
+        .stagger-animation > *:nth-child(1) { animation-delay: 0.1s; }
+        .stagger-animation > *:nth-child(2) { animation-delay: 0.2s; }
+        .stagger-animation > *:nth-child(3) { animation-delay: 0.3s; }
+        .stagger-animation > *:nth-child(4) { animation-delay: 0.4s; }
+        .stagger-animation > *:nth-child(5) { animation-delay: 0.5s; }
+        .stagger-animation > *:nth-child(6) { animation-delay: 0.6s; }
+    </style>
+</head>
+<body>
+    <!-- Particle System -->
+    <canvas class="particles" id="particles"></canvas>
+    
+    <!-- Animated Background -->
+    <div class="animated-bg"></div>
+    
+    <!-- Floating Elements -->
+    <div class="floating-element floating-circle" style="top: 10%; left: 10%; width: 60px; height: 60px;"></div>
+    <div class="floating-element floating-square" style="top: 20%; right: 15%; width: 40px; height: 40px;"></div>
+    <div class="floating-element floating-triangle" style="bottom: 30%; left: 20%;"></div>
+    <div class="floating-element floating-circle" style="bottom: 20%; right: 10%; width: 80px; height: 80px;"></div>
+    
+    <!-- Morphing Shapes -->
+    <div class="morphing-shape" style="top: 15%; right: 20%; width: 120px; height: 120px;"></div>
+    <div class="morphing-shape" style="bottom: 25%; left: 15%; width: 80px; height: 80px;"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content animate-fade-in-up">
+                <div class="logo pulse-effect">⚡</div>
+                <h1 class="glitch-text text-glow" data-text="宙斯音乐制作器">宙斯音乐制作器</h1>
+                <p class="subtitle typing-text">专为 Arma 3 设计的专业音乐/视频模组制作工具</p>
+                <span class="version-badge glow-effect">v2.0.0</span>
+                <br><br>
+                <a href="https://www.vivi141.com/upload/zeus-music-maker.exe" class="download-btn hover-lift glow-effect" id="downloadBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7,10 12,15 17,10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    立即下载
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="container">
+            <div class="nav-content">
+                <a href="#features" class="nav-link">功能特性</a>
+                <a href="#formats" class="nav-link">格式支持</a>
+                <a href="#screenshots" class="nav-link">界面预览</a>
+                <a href="#download" class="nav-link">下载</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Features Section -->
+            <section id="features" class="section">
+                <h2 class="section-title">核心特性</h2>
+                <p class="section-subtitle">基于 Rust 构建的高性能多媒体处理平台，为 Arma 3 模组制作提供专业解决方案</p>
+                
+                <div class="features-grid stagger-animation">
+                    <div class="feature-card card-3d hover-lift">
+                        <div class="feature-icon rotate-effect">🔓</div>
+                        <h3 class="feature-title">音频解密</h3>
+                        <p class="feature-description">支持酷狗KGM和网易云NCM格式解密，轻松获取原始音频文件，无需担心版权格式限制。</p>
+                    </div>
+                    
+                    <div class="feature-card card-3d hover-lift">
+                        <div class="feature-icon pulse-effect">🎼</div>
+                        <h3 class="feature-title">智能转换</h3>
+                        <p class="feature-description">基于FFmpeg的多格式音频/视频转换，自动下载FFmpeg，支持OGG、OGV等Arma 3标准格式。</p>
+                    </div>
+                    
+                    <div class="feature-card card-3d hover-lift">
+                        <div class="feature-icon rotate-effect">🎬</div>
+                        <h3 class="feature-title">视频支持</h3>
+                        <p class="feature-description">支持视频模组制作，智能分片并行处理，大幅提升大文件处理速度，支持多种视频格式。</p>
+                    </div>
+                    
+                    <div class="feature-card card-3d hover-lift">
+                        <div class="feature-icon pulse-effect">🖼️</div>
+                        <h3 class="feature-title">PAA转换</h3>
+                        <p class="feature-description">智能图片格式转换，支持Arma 3专用PAA格式，自动裁剪到2的次方尺寸，优化游戏性能。</p>
+                    </div>
+                    
+                    <div class="feature-card card-3d hover-lift">
+                        <div class="feature-icon rotate-effect">🎮</div>
+                        <h3 class="feature-title">模组生成</h3>
+                        <p class="feature-description">完整的Arma 3音乐/视频模组制作，一键生成标准模组文件结构，符合游戏规范要求。</p>
+                    </div>
+                    
+                    <div class="feature-card card-3d hover-lift">
+                        <div class="feature-icon pulse-effect">⚡</div>
+                        <h3 class="feature-title">高性能</h3>
+                        <p class="feature-description">多线程处理、并行转换、分片处理，充分利用系统资源，显著提升处理速度和效率。</p>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card hover-lift glow-effect">
+                        <div class="stat-number text-glow">10+</div>
+                        <div class="stat-label">支持格式</div>
+                    </div>
+                    <div class="stat-card hover-lift glow-effect">
+                        <div class="stat-number text-glow">50MB/s</div>
+                        <div class="stat-label">转换速度</div>
+                    </div>
+                    <div class="stat-card hover-lift glow-effect">
+                        <div class="stat-number text-glow">4x</div>
+                        <div class="stat-label">性能提升</div>
+                    </div>
+                    <div class="stat-card hover-lift glow-effect">
+                        <div class="stat-number text-glow">100%</div>
+                        <div class="stat-label">Arma 3兼容</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Format Support Section -->
+            <section id="formats" class="section">
+                <h2 class="section-title">格式支持</h2>
+                <p class="section-subtitle">全面的多媒体格式支持，满足各种Arma 3模组制作需求</p>
+                
+                <div class="format-section">
+                    <div class="format-tabs">
+                        <button class="format-tab active" data-format="audio">音频格式</button>
+                        <button class="format-tab" data-format="video">视频格式</button>
+                        <button class="format-tab" data-format="image">图片格式</button>
+                        <button class="format-tab" data-format="encrypted">加密格式</button>
+                    </div>
+                    
+                    <div id="audio-formats" class="format-content active">
+                        <div class="format-grid">
+                            <div class="format-item">
+                                <div class="format-icon">MP3</div>
+                                <span>MP3 - 最常用的音频格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">WAV</div>
+                                <span>WAV - 无损音频格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">FLAC</div>
+                                <span>FLAC - 无损压缩格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">M4A</div>
+                                <span>M4A - Apple音频格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">OGG</div>
+                                <span>OGG - Arma 3标准格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">AAC</div>
+                                <span>AAC - 高质量压缩格式</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="video-formats" class="format-content">
+                        <div class="format-grid">
+                            <div class="format-item">
+                                <div class="format-icon">MP4</div>
+                                <span>MP4 - 最常用的视频格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">AVI</div>
+                                <span>AVI - 传统视频格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">MOV</div>
+                                <span>MOV - QuickTime格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">MKV</div>
+                                <span>MKV - 高质量容器格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">WMV</div>
+                                <span>WMV - Windows媒体格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">OGV</div>
+                                <span>OGV - Arma 3标准格式</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="image-formats" class="format-content">
+                        <div class="format-grid">
+                            <div class="format-item">
+                                <div class="format-icon">PNG</div>
+                                <span>PNG - 无损图片格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">JPG</div>
+                                <span>JPG - 压缩图片格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">BMP</div>
+                                <span>BMP - 位图格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">TGA</div>
+                                <span>TGA - 高质量图片格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">PAA</div>
+                                <span>PAA - Arma 3专用格式</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="encrypted-formats" class="format-content">
+                        <div class="format-grid">
+                            <div class="format-item">
+                                <div class="format-icon">KGM</div>
+                                <span>KGM - 酷狗音乐加密格式</span>
+                            </div>
+                            <div class="format-item">
+                                <div class="format-icon">NCM</div>
+                                <span>NCM - 网易云音乐加密格式</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Screenshots Section -->
+            <section id="screenshots" class="section">
+                <h2 class="section-title">界面预览</h2>
+                <p class="section-subtitle">现代化用户界面，直观易用的操作体验</p>
+                
+                <div class="screenshots-grid">
+                    <div class="screenshot-card">
+                        <div class="screenshot-placeholder">主界面预览</div>
+                        <div class="screenshot-content">
+                            <h3 class="screenshot-title">主界面</h3>
+                            <p class="screenshot-description">简洁现代的主界面，支持音乐和视频模组制作</p>
+                        </div>
+                    </div>
+                    
+                    <div class="screenshot-card">
+                        <div class="screenshot-placeholder">音频转换</div>
+                        <div class="screenshot-content">
+                            <h3 class="screenshot-title">音频转换</h3>
+                            <p class="screenshot-description">批量音频转换，支持多种格式和参数设置</p>
+                        </div>
+                    </div>
+                    
+                    <div class="screenshot-card">
+                        <div class="screenshot-placeholder">模组生成</div>
+                        <div class="screenshot-content">
+                            <h3 class="screenshot-title">模组生成</h3>
+                            <p class="screenshot-description">一键生成Arma 3模组文件结构和配置</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Download Section -->
+        <section id="download" class="download-section">
+            <div class="container">
+                <h2 class="section-title">立即下载</h2>
+                <p class="section-subtitle">绿色便携版，无需安装，双击即可使用</p>
+                
+                <div class="download-buttons">
+                    <a href="https://www.vivi141.com/upload/zeus-music-maker.exe" class="download-btn download-btn-primary hover-lift glow-effect pulse-effect" id="mainDownloadBtn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7,10 12,15 17,10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        下载 Zeus Music Maker v2.0.0
+                    </a>
+                    <a href="#features" class="download-btn download-btn-secondary hover-lift">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="m9 12 2 2 4-4"></path>
+                        </svg>
+                        查看功能特性
+                    </a>
+                </div>
+                
+                <div style="margin-top: 2rem; font-size: 0.875rem; opacity: 0.8;">
+                    <p>系统要求：Windows 10/11 (64位) | 内存：4GB RAM (推荐8GB) | 存储：200MB 可用空间</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>关于项目</h3>
+                    <p>宙斯音乐制作器是一个专为Arma 3设计的专业音乐/视频模组制作工具，基于Rust构建的高性能多媒体处理平台。</p>
+                </div>
+                
+                <div class="footer-section">
+                    <h3>技术特性</h3>
+                    <p>支持音频解密、格式转换、PAA图片处理和完整的模组生成功能。多线程处理，性能优异。</p>
+                </div>
+                
+                <div class="footer-section">
+                    <h3>开源协议</h3>
+                    <p>本项目基于 CC-BY-SA-4.0 许可证开源，欢迎贡献代码和提出建议。</p>
+                </div>
+            </div>
+            
+            <div class="footer-links">
+                <a href="mailto:747384120@qq.com" class="footer-link">联系作者</a>
+                <a href="https://github.com/ViVi141/zeus-music-maker" class="footer-link">GitHub仓库</a>
+                <a href="#features" class="footer-link">功能特性</a>
+                <a href="#download" class="footer-link">立即下载</a>
+            </div>
+            
+            <div class="footer-bottom">
+                <p>&copy; 2025 ViVi141. 保留所有权利。 | Zeus Music Maker v2.0.0</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Advanced Particle System
+        class ParticleSystem {
+            constructor() {
+                this.canvas = document.getElementById('particles');
+                this.ctx = this.canvas.getContext('2d');
+                this.particles = [];
+                this.mouse = { x: 0, y: 0 };
+                this.init();
+            }
+
+            init() {
+                this.resize();
+                this.createParticles();
+                this.animate();
+                
+                window.addEventListener('resize', () => this.resize());
+                window.addEventListener('mousemove', (e) => {
+                    this.mouse.x = e.clientX;
+                    this.mouse.y = e.clientY;
+                });
+            }
+
+            resize() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+            }
+
+            createParticles() {
+                const particleCount = Math.min(50, Math.floor(window.innerWidth / 20));
+                this.particles = [];
+                
+                for (let i = 0; i < particleCount; i++) {
+                    this.particles.push({
+                        x: Math.random() * this.canvas.width,
+                        y: Math.random() * this.canvas.height,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: (Math.random() - 0.5) * 0.5,
+                        size: Math.random() * 2 + 1,
+                        opacity: Math.random() * 0.5 + 0.2,
+                        hue: Math.random() * 60 + 200
+                    });
+                }
+            }
+
+            animate() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                this.particles.forEach(particle => {
+                    // Update position
+                    particle.x += particle.vx;
+                    particle.y += particle.vy;
+                    
+                    // Mouse interaction
+                    const dx = this.mouse.x - particle.x;
+                    const dy = this.mouse.y - particle.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < 100) {
+                        const force = (100 - distance) / 100;
+                        particle.vx += dx * force * 0.0001;
+                        particle.vy += dy * force * 0.0001;
+                    }
+                    
+                    // Bounce off edges
+                    if (particle.x < 0 || particle.x > this.canvas.width) particle.vx *= -1;
+                    if (particle.y < 0 || particle.y > this.canvas.height) particle.vy *= -1;
+                    
+                    // Friction
+                    particle.vx *= 0.99;
+                    particle.vy *= 0.99;
+                    
+                    // Keep particles in bounds
+                    particle.x = Math.max(0, Math.min(this.canvas.width, particle.x));
+                    particle.y = Math.max(0, Math.min(this.canvas.height, particle.y));
+                    
+                    // Draw particle
+                    this.ctx.beginPath();
+                    this.ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                    this.ctx.fillStyle = `hsla(${particle.hue}, 70%, 60%, ${particle.opacity})`;
+                    this.ctx.fill();
+                });
+                
+                // Draw connections
+                this.particles.forEach((particle, i) => {
+                    this.particles.slice(i + 1).forEach(otherParticle => {
+                        const dx = particle.x - otherParticle.x;
+                        const dy = particle.y - otherParticle.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < 100) {
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(particle.x, particle.y);
+                            this.ctx.lineTo(otherParticle.x, otherParticle.y);
+                            this.ctx.strokeStyle = `rgba(37, 99, 235, ${0.1 - distance / 1000})`;
+                            this.ctx.lineWidth = 1;
+                            this.ctx.stroke();
+                        }
+                    });
+                });
+                
+                requestAnimationFrame(() => this.animate());
+            }
+        }
+
+        // Format tabs functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize particle system
+            new ParticleSystem();
+            
+            // Add ripple animation keyframes
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes ripple {
+                    to {
+                        transform: scale(2);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // Advanced hover effects
+            const magneticElements = document.querySelectorAll('.feature-card, .stat-card');
+            magneticElements.forEach(element => {
+                element.addEventListener('mousemove', (e) => {
+                    const rect = element.getBoundingClientRect();
+                    const x = e.clientX - rect.left - rect.width / 2;
+                    const y = e.clientY - rect.top - rect.height / 2;
+                    
+                    element.style.transform = `translate(${x * 0.1}px, ${y * 0.1}px)`;
+                });
+                
+                element.addEventListener('mouseleave', () => {
+                    element.style.transform = 'translate(0, 0)';
+                });
+            });
+            
+            // Ripple effect for buttons
+            const rippleElements = document.querySelectorAll('.download-btn');
+            rippleElements.forEach(element => {
+                element.addEventListener('click', (e) => {
+                    const ripple = document.createElement('span');
+                    const rect = element.getBoundingClientRect();
+                    const size = Math.max(rect.width, rect.height);
+                    const x = e.clientX - rect.left - size / 2;
+                    const y = e.clientY - rect.top - size / 2;
+                    
+                    ripple.style.cssText = `
+                        position: absolute;
+                        width: ${size}px;
+                        height: ${size}px;
+                        left: ${x}px;
+                        top: ${y}px;
+                        background: rgba(255, 255, 255, 0.3);
+                        border-radius: 50%;
+                        transform: scale(0);
+                        animation: ripple 0.6s ease-out;
+                        pointer-events: none;
+                    `;
+                    
+                    element.style.position = 'relative';
+                    element.style.overflow = 'hidden';
+                    element.appendChild(ripple);
+                    
+                    setTimeout(() => {
+                        ripple.remove();
+                    }, 600);
+                });
+            });
+            
+            // Scroll progress bar
+            const progressBar = document.createElement('div');
+            progressBar.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 0%;
+                height: 3px;
+                background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+                z-index: 9999;
+                transition: width 0.1s ease;
+            `;
+            document.body.appendChild(progressBar);
+
+            window.addEventListener('scroll', () => {
+                const scrollTop = window.pageYOffset;
+                const docHeight = document.body.offsetHeight - window.innerHeight;
+                const scrollPercent = (scrollTop / docHeight) * 100;
+                progressBar.style.width = scrollPercent + '%';
+            });
+            
+            const tabs = document.querySelectorAll('.format-tab');
+            const contents = document.querySelectorAll('.format-content');
+            
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const format = this.dataset.format;
+                    
+                    // Remove active class from all tabs and contents
+                    tabs.forEach(t => t.classList.remove('active'));
+                    contents.forEach(c => c.classList.remove('active'));
+                    
+                    // Add active class to clicked tab and corresponding content
+                    this.classList.add('active');
+                    document.getElementById(format + '-formats').classList.add('active');
+                });
+            });
+            
+            // Smooth scrolling for navigation links
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+            
+            // Download button loading animation
+            const downloadButtons = document.querySelectorAll('#downloadBtn, #mainDownloadBtn');
+            downloadButtons.forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    // Add loading animation
+                    const originalText = this.innerHTML;
+                    this.innerHTML = '<div class="loading"></div> 正在准备下载...';
+                    
+                    // Reset after a short delay (download should start)
+                    setTimeout(() => {
+                        this.innerHTML = originalText;
+                    }, 2000);
+                });
+            });
+            
+            // Intersection Observer for animations
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-fade-in-up');
+                    }
+                });
+            }, observerOptions);
+            
+            // Observe elements for animation
+            document.querySelectorAll('.feature-card, .stat-card, .screenshot-card').forEach(el => {
+                observer.observe(el);
+            });
+            
+            // Navbar scroll effect
+            window.addEventListener('scroll', function() {
+                const nav = document.querySelector('.nav');
+                if (window.scrollY > 100) {
+                    nav.style.background = 'rgba(255, 255, 255, 0.95)';
+                    nav.style.backdropFilter = 'blur(10px)';
+                } else {
+                    nav.style.background = 'var(--surface-color)';
+                    nav.style.backdropFilter = 'none';
+                }
+            });
+        });
+        
+        // Analytics tracking (if needed)
+        function trackDownload() {
+            // Add your analytics tracking code here
+            console.log('Download started');
+        }
+        
+        // Track download clicks
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('#downloadBtn, #mainDownloadBtn')) {
+                trackDownload();
+            }
+        });
+    </script>
+</body>
+</html>
