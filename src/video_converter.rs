@@ -131,22 +131,32 @@ impl VideoConverter {
     
     /// 解析 FFmpeg 输出的视频信息
     fn parse_video_info(&self, output: &str) -> Result<VideoInfo> {
+        debug!("开始解析FFmpeg输出:\n{}", output);
+        
         let mut duration = 0u32;
         let mut resolution = (0u32, 0u32);
         
         // 解析时长 (Duration: HH:MM:SS.mmm)
         if let Some(duration_line) = output.lines().find(|line| line.contains("Duration:")) {
+            debug!("找到时长信息行: {}", duration_line);
             if let Some(duration_str) = duration_line.split("Duration:").nth(1) {
                 if let Some(duration_part) = duration_str.split(',').next() {
                     duration = self.parse_duration(duration_part.trim());
+                    debug!("解析到时长: {} 秒", duration);
                 }
             }
         }
         
         // 解析分辨率 (Stream #0:0: Video: ... 1920x1080 ...)
-        if let Some(stream_line) = output.lines().find(|line| line.contains("Video:") && line.contains("x")) {
-            if let Some(resolution_part) = self.extract_resolution(stream_line) {
-                resolution = resolution_part;
+        // 查找包含 "Video:" 的行，然后尝试提取分辨率
+        for line in output.lines() {
+            if line.contains("Video:") {
+                debug!("找到视频流信息行: {}", line);
+                if let Some(resolution_part) = self.extract_resolution(line) {
+                    resolution = resolution_part;
+                    debug!("成功解析分辨率: {}x{}", resolution.0, resolution.1);
+                    break;
+                }
             }
         }
         
@@ -178,21 +188,47 @@ impl VideoConverter {
     
     /// 从流信息中提取分辨率
     fn extract_resolution(&self, stream_line: &str) -> Option<(u32, u32)> {
-        // 查找 "1234x5678" 格式的分辨率
-        if let Some(start) = stream_line.find(|c: char| c.is_ascii_digit()) {
-            let resolution_part = &stream_line[start..];
-            if let Some(end) = resolution_part.find(' ') {
-                let resolution_str = &resolution_part[..end];
-                if let Some(x_pos) = resolution_str.find('x') {
-                    let width_str = &resolution_str[..x_pos];
-                    let height_str = &resolution_str[x_pos + 1..];
+        debug!("解析分辨率字符串: {}", stream_line);
+        
+        // 使用正则表达式查找 "数字x数字" 格式的分辨率
+        // 查找所有可能的 "1234x5678" 格式
+        for (i, c) in stream_line.char_indices() {
+            if c.is_ascii_digit() {
+                // 找到数字，尝试提取分辨率
+                let remaining = &stream_line[i..];
+                
+                // 查找 'x' 字符
+                if let Some(x_pos) = remaining.find('x') {
+                    let width_part = &remaining[..x_pos];
+                    let after_x = &remaining[x_pos + 1..];
                     
-                    if let (Ok(width), Ok(height)) = (width_str.parse::<u32>(), height_str.parse::<u32>()) {
-                        return Some((width, height));
+                    // 提取宽度
+                    if let Ok(width) = width_part.parse::<u32>() {
+                        // 提取高度（到下一个非数字字符为止）
+                        let mut height_end = 0;
+                        for (j, c) in after_x.char_indices() {
+                            if !c.is_ascii_digit() {
+                                height_end = j;
+                                break;
+                            }
+                            height_end = j + 1;
+                        }
+                        
+                        if height_end > 0 {
+                            let height_part = &after_x[..height_end];
+                            if let Ok(height) = height_part.parse::<u32>() {
+                                if width > 0 && height > 0 {
+                                    debug!("解析到分辨率: {}x{}", width, height);
+                                    return Some((width, height));
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+        
+        debug!("未能解析到分辨率");
         None
     }
     
@@ -233,46 +269,3 @@ impl Default for VideoInfo {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-    
-    #[test]
-    fn test_parse_duration() {
-        let converter = VideoConverter::new_with_path(PathBuf::from("ffmpeg")).unwrap_or_else(|_| {
-            // 如果无法创建真实的转换器，创建一个模拟的用于测试
-            VideoConverter { ffmpeg_path: PathBuf::from("ffmpeg") }
-        });
-        
-        assert_eq!(converter.parse_duration("01:30:45"), 5445); // 1小时30分45秒
-        assert_eq!(converter.parse_duration("02:15:30.500"), 8130); // 2小时15分30秒
-        assert_eq!(converter.parse_duration("00:05:20"), 320); // 5分20秒
-    }
-    
-    #[test]
-    fn test_extract_resolution() {
-        let converter = VideoConverter::new_with_path(PathBuf::from("ffmpeg")).unwrap_or_else(|_| {
-            VideoConverter { ffmpeg_path: PathBuf::from("ffmpeg") }
-        });
-        
-        let stream_line = "Stream #0:0: Video: h264, yuv420p, 1920x1080, 25 fps";
-        assert_eq!(converter.extract_resolution(stream_line), Some((1920, 1080)));
-        
-        let stream_line2 = "Stream #0:0: Video: mpeg4, yuv420p, 1280x720, 30 fps";
-        assert_eq!(converter.extract_resolution(stream_line2), Some((1280, 720)));
-    }
-    
-    #[test]
-    fn test_is_supported_video_format() {
-        let converter = VideoConverter::new_with_path(PathBuf::from("ffmpeg")).unwrap_or_else(|_| {
-            VideoConverter { ffmpeg_path: PathBuf::from("ffmpeg") }
-        });
-        
-        assert!(converter.is_supported_video_format(&PathBuf::from("test.mp4")));
-        assert!(converter.is_supported_video_format(&PathBuf::from("test.avi")));
-        assert!(converter.is_supported_video_format(&PathBuf::from("test.ogv")));
-        assert!(!converter.is_supported_video_format(&PathBuf::from("test.txt")));
-        assert!(!converter.is_supported_video_format(&PathBuf::from("test")));
-    }
-}

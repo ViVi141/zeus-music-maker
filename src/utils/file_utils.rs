@@ -59,6 +59,14 @@ impl FileUtils {
             .pick_files()
     }
 
+    /// 选择OGV视频文件（用于视频模组）
+    pub fn select_ogv_video_files() -> Option<Vec<PathBuf>> {
+        FileDialog::new()
+            .add_filter("OGV视频文件", &["ogv"])
+            .set_title("选择OGV视频文件")
+            .pick_files()
+    }
+
     /// 验证文件
     pub fn validate_file(path: &Path) -> Result<()> {
         if !path.exists() {

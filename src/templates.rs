@@ -208,6 +208,27 @@ impl TemplateEngine {
         Ok(())
     }
 
+    /// 生成视频模组的config.cpp文件
+    pub fn generate_video_config_cpp(&self, project: &ProjectSettings, output_path: &Path) -> Result<()> {
+        // 使用拼音风格转换项目信息
+        let ascii_mod_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.mod_name);
+        let ascii_author_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.author_name);
+
+        // 视频模组不需要音乐配置，只生成基本的模组信息
+        let video_config_content = format!(
+            "class CfgPatches\n{{\n    class {}\n    {{\n        units[] = {{}};\n        weapons[] = {{}};\n        requiredVersion = 0.1;\n        requiredAddons[] = {{}};\n        author = \"{}\";\n        name = \"{}\";\n    }};\n}}\n",
+            project.class_name,
+            ascii_author_name,
+            ascii_mod_name
+        );
+
+        std::fs::write(output_path, video_config_content)
+            .with_context(|| format!("无法写入视频配置文件: {:?}", output_path))?;
+
+        debug!("生成视频config.cpp: {:?}", output_path);
+        Ok(())
+    }
+
     /// 生成所有配置文件
     pub fn generate_all_configs(
         &self,
@@ -217,17 +238,28 @@ impl TemplateEngine {
         use_tags: bool,
         mod_dir: &Path,
     ) -> Result<()> {
-        // 生成config.cpp
-        let config_path = mod_dir.join("config.cpp");
-        self.generate_config_cpp(project, tracks, copied_files, use_tags, &config_path)?;
+        // 根据模组类型生成不同的配置文件
+        match project.mod_type {
+            crate::models::ModType::Music => {
+                // 音乐模组：生成完整的配置文件
+                let config_path = mod_dir.join("config.cpp");
+                self.generate_config_cpp(project, tracks, copied_files, use_tags, &config_path)?;
 
-        // 生成mod.cpp
-        let mod_path = mod_dir.join("mod.cpp");
-        self.generate_mod_cpp(project, &mod_path)?;
+                let mod_path = mod_dir.join("mod.cpp");
+                self.generate_mod_cpp(project, &mod_path)?;
 
-        // 生成FileListWithMusicTracks.hpp
-        let tracks_path = mod_dir.join("FileListWithMusicTracks.hpp");
-        self.generate_tracks_hpp(project, tracks, copied_files, use_tags, &tracks_path)?;
+                let tracks_path = mod_dir.join("FileListWithMusicTracks.hpp");
+                self.generate_tracks_hpp(project, tracks, copied_files, use_tags, &tracks_path)?;
+            }
+            crate::models::ModType::Video => {
+                // 视频模组：只生成基本的配置文件
+                let config_path = mod_dir.join("config.cpp");
+                self.generate_video_config_cpp(project, &config_path)?;
+
+                let mod_path = mod_dir.join("mod.cpp");
+                self.generate_mod_cpp(project, &mod_path)?;
+            }
+        }
 
         info!("生成所有配置文件完成");
         Ok(())

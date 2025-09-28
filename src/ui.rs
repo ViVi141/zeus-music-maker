@@ -316,7 +316,7 @@ impl UIComponents {
                 ui.add_space(20.0);
                 ui.label("暂无视频文件，点击'添加视频文件'按钮选择视频文件");
                 ui.add_space(10.0);
-                ui.label("支持格式：MP4, AVI, MOV, MKV, WMV, FLV, WebM等");
+                ui.label("支持格式：OGV (Arma 3标准格式)");
                 ui.add_space(20.0);
             });
         } else {
@@ -335,13 +335,22 @@ impl UIComponents {
                 video_display.clear();
                 video_display.push_str("🎬 ");
                 video_display.push_str(&video.display_name());
-                video_display.push_str(" (");
-                video_display.push_str(&video.resolution.0.to_string());
-                video_display.push_str("x");
-                video_display.push_str(&video.resolution.1.to_string());
-                video_display.push_str(", ");
-                video_display.push_str(&video.duration.to_string());
-                video_display.push_str("秒)");
+                
+                // 只有当分辨率不为0x0时才显示分辨率信息
+                if video.resolution.0 > 0 && video.resolution.1 > 0 {
+                    video_display.push_str(" (");
+                    video_display.push_str(&video.resolution.0.to_string());
+                    video_display.push_str("x");
+                    video_display.push_str(&video.resolution.1.to_string());
+                    video_display.push_str(", ");
+                    video_display.push_str(&video.duration.to_string());
+                    video_display.push_str("秒)");
+                } else if video.duration > 0 {
+                    // 只显示时长
+                    video_display.push_str(" (");
+                    video_display.push_str(&video.duration.to_string());
+                    video_display.push_str("秒)");
+                }
                 
                 let response = ui.selectable_label(is_selected, &video_display);
 
@@ -422,7 +431,13 @@ impl UIComponents {
 
     /// 添加视频文件
     fn add_video_files(ui: &mut egui::Ui, state: &mut AppState) {
-        if let Some(paths) = FileOperations::select_video_files() {
+        // 根据模组类型选择不同的文件选择器
+        let paths = match state.project.mod_type {
+            crate::models::ModType::Video => FileOperations::select_ogv_video_files(),
+            crate::models::ModType::Music => FileOperations::select_video_files(),
+        };
+        
+        if let Some(paths) = paths {
             // 使用多线程处理视频加载
             state.task_manager.start_task(crate::models::TaskType::AudioLoad, paths.len()); // 复用AudioLoad任务类型
             match FileOperations::load_video_files(paths, &state.project.class_name) {
@@ -823,8 +838,18 @@ impl UIComponents {
 
     /// 导出模组
     fn export_mod(state: &mut AppState, export_dir: &std::path::Path) {
-        if state.tracks.is_empty() {
-            state.export_result = Some("导出失败：没有轨道可以导出".to_string());
+        // 根据模组类型检查不同的数据
+        let has_content = match state.project.mod_type {
+            crate::models::ModType::Music => !state.tracks.is_empty(),
+            crate::models::ModType::Video => !state.video_files.is_empty(),
+        };
+        
+        if !has_content {
+            let error_msg = match state.project.mod_type {
+                crate::models::ModType::Music => "导出失败：没有音频轨道可以导出",
+                crate::models::ModType::Video => "导出失败：没有视频文件可以导出",
+            };
+            state.export_result = Some(error_msg.to_string());
             state.show_export_result = true;
             return;
         }
@@ -836,86 +861,110 @@ impl UIComponents {
             Ok(mod_dir) => {
                 success_steps.push("创建模组目录结构".to_string());
                 
-                // 复制轨道文件并获取重命名后的文件名（使用拼音风格）
-                match FileOperations::copy_track_files_pinyin(&state.tracks, &mod_dir) {
-                    Ok(files) => {
-                        success_steps.push(format!("复制轨道文件 ({} 个)", files.len()));
-                        
-                        // 复制Logo文件
-                        match FileOperations::copy_logo_file(&state.project, &mod_dir) {
-                            Ok(_) => success_steps.push("复制Logo文件".to_string()),
-                            Err(e) => error_steps.push(format!("复制Logo文件失败: {}", e)),
+                // 根据模组类型复制不同的文件
+                let (files, skipped_count, file_type) = match state.project.mod_type {
+                    crate::models::ModType::Music => {
+                        match FileOperations::copy_track_files_pinyin(&state.tracks, &mod_dir) {
+                            Ok((files, skipped_count)) => (files, skipped_count, "轨道文件"),
+                            Err(e) => {
+                                error_steps.push(format!("复制轨道文件失败: {}", e));
+                                return;
+                            }
                         }
-
-                        // 复制Steam Logo
-                        match FileOperations::copy_steam_logo(&mod_dir) {
-                            Ok(_) => success_steps.push("复制Steam Logo".to_string()),
-                            Err(e) => error_steps.push(format!("复制Steam Logo失败: {}", e)),
+                    }
+                    crate::models::ModType::Video => {
+                        match FileOperations::copy_video_files_pinyin(&state.video_files, &mod_dir) {
+                            Ok((files, skipped_count)) => (files, skipped_count, "视频文件"),
+                            Err(e) => {
+                                error_steps.push(format!("复制视频文件失败: {}", e));
+                                return;
+                            }
                         }
+                    }
+                };
+                
+                let copied_files = files.len();
+                if skipped_count > 0 {
+                    success_steps.push(format!("复制{} ({} 个，跳过 {} 个重复)", file_type, copied_files, skipped_count));
+                } else {
+                    success_steps.push(format!("复制{} ({} 个)", file_type, copied_files));
+                }
+                
+                // 复制Logo文件
+                match FileOperations::copy_logo_file(&state.project, &mod_dir) {
+                    Ok(_) => success_steps.push("复制Logo文件".to_string()),
+                    Err(e) => error_steps.push(format!("复制Logo文件失败: {}", e)),
+                }
 
-                        // 生成配置文件
-                        let template_engine = TemplateEngine::default();
-                        match template_engine.generate_all_configs(
+                // 复制Steam Logo
+                match FileOperations::copy_steam_logo(&mod_dir) {
+                    Ok(_) => success_steps.push("复制Steam Logo".to_string()),
+                    Err(e) => error_steps.push(format!("复制Steam Logo失败: {}", e)),
+                }
+
+                // 生成配置文件
+                let template_engine = TemplateEngine::default();
+                let config_result = match state.project.mod_type {
+                    crate::models::ModType::Music => {
+                        template_engine.generate_all_configs(
                             &state.project,
                             &state.tracks,
                             &files,
                             state.export_settings.append_tags,
                             &mod_dir,
-                        ) {
-                            Ok(_) => {
-                                success_steps.push("生成配置文件".to_string());
-                                
-                                // 构建最终结果消息
-                                let mut result_message = format!("模组导出成功！\n\n输出目录: {}\n\n", mod_dir.display());
-                                
-                                if !success_steps.is_empty() {
-                                    result_message.push_str("成功步骤:\n");
-                                    for step in &success_steps {
-                                        result_message.push_str(&format!("  {}\n", step));
-                                    }
-                                }
-                                
-                                if !error_steps.is_empty() {
-                                    result_message.push_str("\n警告信息:\n");
-                                    for step in &error_steps {
-                                        result_message.push_str(&format!("  {}\n", step));
-                                    }
-                                }
-                                
-                                result_message.push_str(&format!("\n统计信息:\n  轨道数量: {}\n  模组名称: {}", 
-                                    state.tracks.len(), 
-                                    state.project.mod_name
-                                ));
-                                
-                                state.export_result = Some(result_message);
-                                state.show_export_result = true;
-                                info!("模组导出成功: {:?}", mod_dir);
-                            },
-                            Err(e) => {
-                                error_steps.push(format!("生成配置文件失败: {}", e));
-                                let mut result_message = format!("模组导出失败！\n\n输出目录: {}\n\n", mod_dir.display());
-                                
-                                if !success_steps.is_empty() {
-                                    result_message.push_str("成功步骤:\n");
-                                    for step in &success_steps {
-                                        result_message.push_str(&format!("  {}\n", step));
-                                    }
-                                }
-                                
-                                if !error_steps.is_empty() {
-                                    result_message.push_str("\n错误信息:\n");
-                                    for step in &error_steps {
-                                        result_message.push_str(&format!("  {}\n", step));
-                                    }
-                                }
-                                
-                                state.export_result = Some(result_message);
-                                state.show_export_result = true;
+                        )
+                    }
+                    crate::models::ModType::Video => {
+                        // 为视频模组生成配置文件
+                        template_engine.generate_all_configs(
+                            &state.project,
+                            &[], // 视频模组不需要音频轨道
+                            &files,
+                            state.export_settings.append_tags,
+                            &mod_dir,
+                        )
+                    }
+                };
+                
+                match config_result {
+                    Ok(_) => {
+                        success_steps.push("生成配置文件".to_string());
+                        
+                        // 构建最终结果消息
+                        let mut result_message = format!("模组导出成功！\n\n输出目录: {}\n\n", mod_dir.display());
+                        
+                        if !success_steps.is_empty() {
+                            result_message.push_str("成功步骤:\n");
+                            for step in &success_steps {
+                                result_message.push_str(&format!("  {}\n", step));
                             }
                         }
+                        
+                        if !error_steps.is_empty() {
+                            result_message.push_str("\n警告信息:\n");
+                            for step in &error_steps {
+                                result_message.push_str(&format!("  {}\n", step));
+                            }
+                        }
+                        
+                        let item_count = match state.project.mod_type {
+                            crate::models::ModType::Music => state.tracks.len(),
+                            crate::models::ModType::Video => state.video_files.len(),
+                        };
+                        let item_type = match state.project.mod_type {
+                            crate::models::ModType::Music => "轨道数量",
+                            crate::models::ModType::Video => "视频数量",
+                        };
+                        result_message.push_str(&format!("\n统计信息:\n  {}: {}\n  模组名称: {}", 
+                            item_type, item_count, state.project.mod_name
+                        ));
+                        
+                        state.export_result = Some(result_message);
+                        state.show_export_result = true;
+                        info!("模组导出成功: {:?}", mod_dir);
                     },
                     Err(e) => {
-                        error_steps.push(format!("复制轨道文件失败: {}", e));
+                        error_steps.push(format!("生成配置文件失败: {}", e));
                         let mut result_message = format!("模组导出失败！\n\n输出目录: {}\n\n", mod_dir.display());
                         
                         if !success_steps.is_empty() {
@@ -959,13 +1008,28 @@ impl UIComponents {
                     let mod_path = mod_dir.join("mod.cpp");
                     if let Err(e) = template_engine.generate_mod_cpp(&state.project, &mod_path) {
                         warn!("生成mod.cpp失败: {}", e);
+                        // 显示错误提示
+                        state.export_result = Some(format!("插件构建失败！\n\n错误: {}", e));
+                        state.show_export_result = true;
                         return;
                     }
 
                     info!("插件构建成功: {:?}", mod_dir);
+                    
+                    // 显示成功提示
+                    let success_message = format!(
+                        "🎉 插件构建成功！\n\n📁 输出目录: {}\n📄 PBO文件: {}\n📝 模组文件: mod.cpp\n\n插件已准备就绪，可以安装到Arma 3中！",
+                        mod_dir.display(),
+                        pbo_path.display()
+                    );
+                    state.export_result = Some(success_message);
+                    state.show_export_result = true;
                 }
                 Err(e) => {
                     warn!("构建插件失败: {}", e);
+                    // 显示错误提示
+                    state.export_result = Some(format!("插件构建失败！\n\n错误: {}", e));
+                    state.show_export_result = true;
                 }
             }
         }
@@ -1310,13 +1374,13 @@ impl UIComponents {
                             .show(ui, |ui| {
                                 // 按行分割结果文本并显示
                                 for line in result.lines() {
-                                    if line.contains("导出成功！") || line.contains("导出失败！") {
+                                    if line.contains("导出成功！") || line.contains("导出失败！") || line.contains("插件构建成功！") || line.contains("插件构建失败！") {
                                         ui.heading(line);
                                     } else if line.starts_with("  成功步骤:") || line.starts_with("  警告信息:") {
                                         ui.colored_label(egui::Color32::from_rgb(0, 150, 0), line);
                                     } else if line.starts_with("  错误信息:") {
                                         ui.colored_label(egui::Color32::from_rgb(200, 50, 50), line);
-                                    } else if line.starts_with("输出目录:") || line.starts_with("统计信息:") {
+                                    } else if line.starts_with("输出目录:") || line.starts_with("统计信息:") || line.starts_with("📁") || line.starts_with("📄") || line.starts_with("📝") {
                                         ui.colored_label(egui::Color32::from_rgb(100, 100, 255), line);
                                     } else if line.trim().is_empty() {
                                         ui.add_space(5.0);
@@ -2934,7 +2998,14 @@ impl UIComponents {
                                     
                                     ui.horizontal(|ui| {
                                         ui.label("2️⃣");
-                                        ui.label("添加媒体文件：点击底部按钮选择OGG音频或视频文件");
+                                        match state.project.mod_type {
+                                            crate::models::ModType::Music => {
+                                                ui.label("添加媒体文件：点击底部按钮选择OGG音频文件");
+                                            }
+                                            crate::models::ModType::Video => {
+                                                ui.label("添加媒体文件：点击底部按钮选择OGV视频文件");
+                                            }
+                                        }
                                     });
                                     
                                     ui.horizontal(|ui| {

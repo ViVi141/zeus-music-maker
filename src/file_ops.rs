@@ -75,6 +75,11 @@ impl FileOperations {
         FileUtils::select_video_files()
     }
 
+    /// 选择OGV视频文件（用于视频模组）
+    pub fn select_ogv_video_files() -> Option<Vec<PathBuf>> {
+        FileUtils::select_ogv_video_files()
+    }
+
     /// 加载音频文件并创建轨道
     pub fn load_audio_files(paths: Vec<PathBuf>, class_name: &str) -> Result<Vec<Track>> {
         let mut tracks = Vec::new();
@@ -194,12 +199,21 @@ impl FileOperations {
         fs::create_dir_all(&mod_dir)
             .with_context(|| format!("无法创建模组目录: {:?}", mod_dir))?;
 
-        // 创建轨道目录
-        let tracks_dir = mod_dir.join("folderwithtracks");
-        fs::create_dir_all(&tracks_dir)
-            .with_context(|| format!("无法创建轨道目录: {:?}", tracks_dir))?;
+        // 根据模组类型创建不同的目录结构
+        match project.mod_type {
+            crate::models::ModType::Music => {
+                // 音乐模组：创建轨道目录
+                let tracks_dir = mod_dir.join("folderwithtracks");
+                fs::create_dir_all(&tracks_dir)
+                    .with_context(|| format!("无法创建轨道目录: {:?}", tracks_dir))?;
+                info!("创建音乐模组目录结构: {:?} (包含folderwithtracks)", mod_dir);
+            }
+            crate::models::ModType::Video => {
+                // 视频模组：不需要创建额外文件夹
+                info!("创建视频模组目录结构: {:?} (仅根目录)", mod_dir);
+            }
+        }
 
-        info!("创建模组目录结构: {:?}", mod_dir);
         Ok(mod_dir)
     }
 
@@ -209,38 +223,147 @@ impl FileOperations {
     }
 
 
-    /// 复制轨道文件到模组目录并自动重命名（拼音风格）
-    pub fn copy_track_files_pinyin(tracks: &[Track], mod_dir: &Path) -> Result<Vec<String>> {
+    /// 通用的文件复制函数，支持音频和视频文件
+    /// 返回 (复制的文件名列表, 跳过的重复文件数量)
+    fn copy_files_pinyin_generic<T>(
+        items: &[T],
+        mod_dir: &Path,
+        get_path: fn(&T) -> &Path,
+        get_name: fn(&T) -> &str,
+        extension: &str,
+        item_type: &str,
+    ) -> Result<(Vec<String>, usize)>
+    where
+        T: std::fmt::Debug,
+    {
         let tracks_dir = mod_dir.join("folderwithtracks");
         // 预分配容量，避免多次重新分配
-        let mut copied_files = Vec::with_capacity(tracks.len());
+        let mut copied_files = Vec::with_capacity(items.len());
+        // 用于跟踪已使用的文件名，避免重复
+        let mut used_filenames = std::collections::HashSet::new();
+        let mut skipped_count = 0;
 
-        for (i, track) in tracks.iter().enumerate() {
-            let source = &track.path;
+        for (i, item) in items.iter().enumerate() {
+            let source = get_path(item);
             
             // 生成ASCII安全的文件名（拼音风格）
-            let ascii_filename = Self::generate_ascii_filename_pinyin(&track.track_name, i);
+            let ascii_filename = Self::generate_ascii_filename_pinyin(get_name(item), i);
             // 使用预分配的String避免多次分配
-            let mut new_filename = String::with_capacity(ascii_filename.len() + 4);
+            let mut new_filename = String::with_capacity(ascii_filename.len() + extension.len() + 1);
             new_filename.push_str(&ascii_filename);
-            new_filename.push_str(".ogg");
-            let destination = tracks_dir.join(&new_filename);
+            new_filename.push_str(extension);
+            
+            // 检查文件名是否已存在，如果存在则添加数字后缀
+            let mut final_filename = new_filename.clone();
+            let mut counter = 1;
+            while used_filenames.contains(&final_filename) || tracks_dir.join(&final_filename).exists() {
+                final_filename = format!("{}_{}{}", ascii_filename, counter, extension);
+                counter += 1;
+            }
+            
+            let destination = tracks_dir.join(&final_filename);
 
             if !source.exists() {
                 warn!("源文件不存在: {:?}", source);
                 continue;
             }
 
+            // 检查目标文件是否已存在且内容相同，避免重复复制
+            if destination.exists() {
+                if let (Ok(source_metadata), Ok(dest_metadata)) = (source.metadata(), destination.metadata()) {
+                    if source_metadata.len() == dest_metadata.len() {
+                        debug!("跳过重复文件: {:?}", destination);
+                        copied_files.push(final_filename.clone());
+                        used_filenames.insert(final_filename);
+                        skipped_count += 1;
+                        continue;
+                    }
+                }
+            }
+
             // 使用更高效的文件复制方法
             Self::copy_file_optimized(source, &destination)
                 .with_context(|| format!("无法复制文件: {:?} -> {:?}", source, destination))?;
 
-            copied_files.push(new_filename);
+            copied_files.push(final_filename.clone());
+            used_filenames.insert(final_filename);
             debug!("复制文件: {:?} -> {:?}", source, destination);
         }
 
-        info!("成功复制 {} 个轨道文件", copied_files.len());
-        Ok(copied_files)
+        info!("成功复制 {} 个{}，跳过 {} 个重复文件", copied_files.len(), item_type, skipped_count);
+        Ok((copied_files, skipped_count))
+    }
+
+    /// 复制轨道文件到模组目录并自动重命名（拼音风格）
+    /// 返回 (复制的文件名列表, 跳过的重复文件数量)
+    pub fn copy_track_files_pinyin(tracks: &[Track], mod_dir: &Path) -> Result<(Vec<String>, usize)> {
+        Self::copy_files_pinyin_generic(
+            tracks,
+            mod_dir,
+            |track| &track.path,
+            |track| &track.track_name,
+            ".ogg",
+            "轨道文件",
+        )
+    }
+
+    /// 复制视频文件到模组目录并自动重命名（拼音风格）
+    /// 返回 (复制的文件名列表, 跳过的重复文件数量)
+    pub fn copy_video_files_pinyin(video_files: &[VideoFile], mod_dir: &Path) -> Result<(Vec<String>, usize)> {
+        // 视频文件直接放在模组根目录，不需要folderwithtracks文件夹
+        let mut copied_files = Vec::with_capacity(video_files.len());
+        let mut used_filenames = std::collections::HashSet::new();
+        let mut skipped_count = 0;
+
+        for (i, video_file) in video_files.iter().enumerate() {
+            let source = &video_file.path;
+            
+            // 生成ASCII安全的文件名（拼音风格）
+            let ascii_filename = Self::generate_ascii_filename_pinyin(&video_file.video_name, i);
+            // 使用预分配的String避免多次分配
+            let mut new_filename = String::with_capacity(ascii_filename.len() + 5);
+            new_filename.push_str(&ascii_filename);
+            new_filename.push_str(".ogv");
+            
+            // 检查文件名是否已存在，如果存在则添加数字后缀
+            let mut final_filename = new_filename.clone();
+            let mut counter = 1;
+            while used_filenames.contains(&final_filename) || mod_dir.join(&final_filename).exists() {
+                final_filename = format!("{}_{}.ogv", ascii_filename, counter);
+                counter += 1;
+            }
+            
+            let destination = mod_dir.join(&final_filename);
+
+            if !source.exists() {
+                warn!("源文件不存在: {:?}", source);
+                continue;
+            }
+
+            // 检查目标文件是否已存在且内容相同，避免重复复制
+            if destination.exists() {
+                if let (Ok(source_metadata), Ok(dest_metadata)) = (source.metadata(), destination.metadata()) {
+                    if source_metadata.len() == dest_metadata.len() {
+                        debug!("跳过重复文件: {:?}", destination);
+                        copied_files.push(final_filename.clone());
+                        used_filenames.insert(final_filename);
+                        skipped_count += 1;
+                        continue;
+                    }
+                }
+            }
+
+            // 使用更高效的文件复制方法
+            Self::copy_file_optimized(source, &destination)
+                .with_context(|| format!("无法复制文件: {:?} -> {:?}", source, destination))?;
+
+            copied_files.push(final_filename.clone());
+            used_filenames.insert(final_filename);
+            debug!("复制文件: {:?} -> {:?}", source, destination);
+        }
+
+        info!("成功复制 {} 个视频文件到根目录，跳过 {} 个重复文件", copied_files.len(), skipped_count);
+        Ok((copied_files, skipped_count))
     }
 
 
