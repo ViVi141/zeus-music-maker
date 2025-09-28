@@ -1,0 +1,27 @@
+# Cargo 配置文件 - 性能优化设置
+
+[build]
+# 启用并行构建
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "target-feature=+sse,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+avx,+avx2",
+    "-C", "opt-level=3",
+    "-C", "lto=fat",
+]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "target-feature=+sse,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+avx,+avx2",
+]
+
+# 启用更快的编译
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[profile.dev]
+debug = 1
+opt-level = 1
