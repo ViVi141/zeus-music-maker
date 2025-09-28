@@ -726,6 +726,9 @@ impl AppState {
     
     /// 恢复运行时状态（从配置文件加载后调用）
     fn restore_runtime_state(&mut self) {
+        // 重置项目设置为默认值（每次启动都重新开始）
+        self.project = ProjectSettings::default();
+        
         // 清空所有列表和选择（每次启动都重新开始）
         self.tracks.clear();
         self.video_files.clear();
