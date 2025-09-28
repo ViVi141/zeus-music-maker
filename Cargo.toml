@@ -76,6 +76,9 @@ zip = "0.6"
 which = "4.4"
 futures-util = "0.3"
 
+# Chinese pinyin conversion
+pinyin = "0.10"
+
 # Windows DLL support
 [target.'cfg(windows)'.dependencies]
 libc = "0.2"

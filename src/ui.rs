@@ -838,8 +838,8 @@ impl UIComponents {
             Ok(mod_dir) => {
                 success_steps.push("创建模组目录结构".to_string());
                 
-                // 复制轨道文件并获取重命名后的文件名
-                match FileOperations::copy_track_files(&state.tracks, &mod_dir) {
+                // 复制轨道文件并获取重命名后的文件名（使用拼音风格）
+                match FileOperations::copy_track_files_pinyin(&state.tracks, &mod_dir) {
                     Ok(files) => {
                         success_steps.push(format!("复制轨道文件 ({} 个)", files.len()));
                         

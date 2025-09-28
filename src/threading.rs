@@ -302,9 +302,14 @@ impl ThreadedTaskProcessor {
                     warn!("发送进度更新失败: {}", e);
                 }
 
-                // 生成输出路径
+                // 生成输出路径（使用拼音风格重命名）
                 if let Some(file_stem) = input_path.file_stem() {
-                    let output_path = output_dir.join(format!("{}.ogg", file_stem.to_string_lossy()));
+                    // 使用拼音风格生成文件名
+                    let pinyin_filename = crate::utils::string_utils::StringUtils::safe_filename_pinyin(
+                        &file_stem.to_string_lossy(), 
+                        i
+                    );
+                    let output_path = output_dir.join(format!("{}.ogg", pinyin_filename));
                     
                     // 执行转换
                     let cancel_check = || *cancel_flag.lock().unwrap_or_else(|_| {
@@ -314,7 +319,7 @@ impl ThreadedTaskProcessor {
                     match converter.convert_to_ogg_with_cancel(input_path, &output_path, &cancel_check) {
                         Ok(_) => {
                             success_count += 1;
-                            results.push(format!("转换成功: {} -> {}.ogg", filename, file_stem.to_string_lossy()));
+                            results.push(format!("转换成功: {} -> {}.ogg", filename, pinyin_filename));
                             info!("音频转换成功: {:?}", output_path);
                         }
                         Err(e) => {
@@ -404,13 +409,16 @@ impl ThreadedTaskProcessor {
                     warn!("发送进度更新失败: {}", e);
                 }
 
-                // 生成输出文件名
-                let output_filename = input_path
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string() + ".ogv";
-                
+                // 生成输出文件名（使用拼音风格重命名）
+                let pinyin_filename = if let Some(file_stem) = input_path.file_stem() {
+                    crate::utils::string_utils::StringUtils::safe_filename_pinyin(
+                        &file_stem.to_string_lossy(), 
+                        i
+                    )
+                } else {
+                    format!("video{:03}", i)
+                };
+                let output_filename = pinyin_filename + ".ogv";
                 let output_path = output_dir.join(output_filename);
 
                 // 执行视频转换

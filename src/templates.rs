@@ -79,22 +79,9 @@ impl TemplateEngine {
 
     /// 生成config.cpp文件
     pub fn generate_config_cpp(&self, project: &ProjectSettings, _tracks: &[Track], _copied_files: &[String], _use_tags: bool, output_path: &Path) -> Result<()> {
-        // 确保项目信息只包含ASCII字符
-        let ascii_mod_name = project.mod_name.chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c.is_ascii_punctuation() || c.is_ascii_whitespace() {
-                c
-            } else {
-                '_'
-            })
-            .collect::<String>();
-        
-        let ascii_author_name = project.author_name.chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c.is_ascii_punctuation() || c.is_ascii_whitespace() {
-                c
-            } else {
-                '_'
-            })
-            .collect::<String>();
+        // 使用拼音风格转换项目信息
+        let ascii_mod_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.mod_name);
+        let ascii_author_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.author_name);
 
         let data = ConfigTemplateData {
             mod_name_no_spaces: project.mod_name_no_spaces(),
@@ -125,22 +112,9 @@ impl TemplateEngine {
 
     /// 生成mod.cpp文件
     pub fn generate_mod_cpp(&self, project: &ProjectSettings, output_path: &Path) -> Result<()> {
-        // 确保项目信息只包含ASCII字符
-        let ascii_mod_name = project.mod_name.chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c.is_ascii_punctuation() || c.is_ascii_whitespace() {
-                c
-            } else {
-                '_'
-            })
-            .collect::<String>();
-        
-        let ascii_author_name = project.author_name.chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c.is_ascii_punctuation() || c.is_ascii_whitespace() {
-                c
-            } else {
-                '_'
-            })
-            .collect::<String>();
+        // 使用拼音风格转换项目信息
+        let ascii_mod_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.mod_name);
+        let ascii_author_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.author_name);
 
         let data = ModTemplateData {
             mod_name: ascii_mod_name,
@@ -185,23 +159,11 @@ impl TemplateEngine {
                 track.track_name.clone()
             };
 
-            // 确保轨道名称只包含ASCII字符
-            let ascii_track_name = track_name.chars()
-                .map(|c| if c.is_ascii_alphanumeric() || c.is_ascii_punctuation() || c.is_ascii_whitespace() {
-                    c
-                } else {
-                    '_'
-                })
-                .collect::<String>();
+            // 使用拼音风格转换轨道名称
+            let ascii_track_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&track_name);
 
-            // 确保类名只包含ASCII字符
-            let ascii_class_name = project.class_name.chars()
-                .map(|c| if c.is_ascii_alphanumeric() {
-                    c
-                } else {
-                    '_'
-                })
-                .collect::<String>();
+            // 使用拼音风格转换类名
+            let ascii_class_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.class_name);
 
             let track_class = format!("{}Song{}", ascii_class_name, i);
             // 使用重命名后的文件名

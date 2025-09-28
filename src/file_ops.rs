@@ -104,7 +104,7 @@ impl FileOperations {
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| "unknown".to_string());
             
-            let safe_track_name = StringUtils::safe_filename(&track_name, index);
+            let safe_track_name = StringUtils::safe_filename_pinyin(&track_name, index);
 
             // 创建轨道
             let mut track = Track::new(path.clone(), safe_track_name, class_name.to_string());
@@ -203,13 +203,14 @@ impl FileOperations {
         Ok(mod_dir)
     }
 
-    /// 生成ASCII安全的文件名
-    pub fn generate_ascii_filename(original_name: &str, index: usize) -> String {
-        StringUtils::safe_filename(original_name, index)
+    /// 生成ASCII安全的文件名（拼音风格）
+    pub fn generate_ascii_filename_pinyin(original_name: &str, index: usize) -> String {
+        StringUtils::safe_filename_pinyin(original_name, index)
     }
 
-    /// 复制轨道文件到模组目录并自动重命名
-    pub fn copy_track_files(tracks: &[Track], mod_dir: &Path) -> Result<Vec<String>> {
+
+    /// 复制轨道文件到模组目录并自动重命名（拼音风格）
+    pub fn copy_track_files_pinyin(tracks: &[Track], mod_dir: &Path) -> Result<Vec<String>> {
         let tracks_dir = mod_dir.join("folderwithtracks");
         // 预分配容量，避免多次重新分配
         let mut copied_files = Vec::with_capacity(tracks.len());
@@ -217,8 +218,8 @@ impl FileOperations {
         for (i, track) in tracks.iter().enumerate() {
             let source = &track.path;
             
-            // 生成ASCII安全的文件名
-            let ascii_filename = Self::generate_ascii_filename(&track.track_name, i);
+            // 生成ASCII安全的文件名（拼音风格）
+            let ascii_filename = Self::generate_ascii_filename_pinyin(&track.track_name, i);
             // 使用预分配的String避免多次分配
             let mut new_filename = String::with_capacity(ascii_filename.len() + 4);
             new_filename.push_str(&ascii_filename);
@@ -241,6 +242,7 @@ impl FileOperations {
         info!("成功复制 {} 个轨道文件", copied_files.len());
         Ok(copied_files)
     }
+
 
     /// 复制Logo文件
     pub fn copy_logo_file(project: &ProjectSettings, mod_dir: &Path) -> Result<()> {
