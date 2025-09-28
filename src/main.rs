@@ -30,12 +30,26 @@ use app::ZeusMusicApp;
 use crate::utils::constants::app as app_constants;
 
 fn main() -> Result<(), eframe::Error> {
+    // 在Windows上隐藏控制台窗口
+    #[cfg(target_os = "windows")]
+    {
+        use winapi::um::wincon::FreeConsole;
+        
+        unsafe {
+            // 隐藏控制台窗口
+            FreeConsole();
+        }
+    }
+    
     // 设置日志级别，减少控制台输出
     std::env::set_var("RUST_LOG", "warn");
     env_logger::init();
     
     // 设置更快的退出策略
     std::env::set_var("RUST_BACKTRACE", "0");
+    
+    // 设置快速关闭环境变量
+    std::env::set_var("RUST_FAST_SHUTDOWN", "1");
     
     // 设置生产环境优化参数
     std::env::set_var("RUST_MIN_STACK", &app_constants::MIN_STACK_SIZE.to_string());

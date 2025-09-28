@@ -680,31 +680,50 @@ impl ThreadedTaskProcessor {
         });
     }
     
-    /// 取消当前任务
+    /// 取消当前任务（快速取消）
     pub fn cancel_task(&self) {
-        *self.cancel_flag.lock().unwrap() = true;
+        // 立即设置取消标志
+        if let Ok(mut flag) = self.cancel_flag.lock() {
+            *flag = true;
+        }
         
         // 如果存在并行转换器，也取消它
         if let Some(ref converter) = self.parallel_converter {
             converter.cancel_all_tasks();
         }
         
+        // 发送一个特殊的取消消息来快速唤醒等待的线程
+        let _ = self.progress_sender.try_send(TaskMessage::TaskCompleted {
+            success_count: 0,
+            error_count: 0,
+            results: vec!["任务被用户取消".to_string()],
+        });
+        
         info!("任务取消信号已发送");
     }
 
-    /// 等待所有任务完成（用于优雅关闭）
+    /// 等待所有任务完成（用于快速关闭）
     pub fn wait_for_completion(&self, timeout_ms: u64) -> bool {
         let start_time = std::time::Instant::now();
         let timeout = std::time::Duration::from_millis(timeout_ms);
         
+        // 快速检查是否有任务在运行
+        let mut consecutive_empty_checks = 0;
+        const MAX_EMPTY_CHECKS: u32 = 3; // 连续3次没有消息就认为完成
+        
         while start_time.elapsed() < timeout {
-            // 检查是否还有未完成的任务
             if let Ok(_) = self.progress_receiver.try_recv() {
-                // 还有消息在处理，使用更短的等待时间提高响应性
-                std::thread::sleep(std::time::Duration::from_millis(5));
+                // 还有消息在处理
+                consecutive_empty_checks = 0;
+                std::thread::sleep(std::time::Duration::from_millis(1)); // 更短的等待时间
             } else {
-                // 没有更多消息，任务可能已完成
-                break;
+                // 没有更多消息
+                consecutive_empty_checks += 1;
+                if consecutive_empty_checks >= MAX_EMPTY_CHECKS {
+                    // 连续多次没有消息，认为任务已完成
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
             }
         }
         

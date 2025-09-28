@@ -156,29 +156,42 @@ impl eframe::App for ZeusMusicApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        info!("程序开始优雅关闭...");
+        info!("程序开始快速关闭...");
         
-        // 1. 保存配置文件
-        if let Err(e) = self.state.save_config() {
-            warn!("保存配置文件失败: {}", e);
-        }
-        
-        // 2. 取消所有正在运行的任务
+        // 1. 立即取消所有正在运行的任务
         self.task_processor.cancel_task();
         
-        // 3. 等待任务完成（最多等待5秒）
-        if !self.task_processor.wait_for_completion(5000) {
-            warn!("任务未在超时时间内完成，继续关闭");
+        // 2. 快速保存配置文件（异步，不等待）
+        let state_clone = self.state.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = state_clone.save_config() {
+                warn!("保存配置文件失败: {}", e);
+            }
+        });
+        
+        // 3. 检查是否有快速关闭环境变量
+        let fast_shutdown = std::env::var("RUST_FAST_SHUTDOWN").unwrap_or_default() == "1";
+        
+        if fast_shutdown {
+            // 快速关闭模式：最多等待500毫秒
+            if !self.task_processor.wait_for_completion(500) {
+                warn!("快速关闭：任务未在500毫秒内完成，强制关闭");
+            }
+        } else {
+            // 正常关闭模式：最多等待1秒
+            if !self.task_processor.wait_for_completion(1000) {
+                warn!("任务未在1秒内完成，强制关闭");
+            }
         }
         
-        // 4. 清理资源
+        // 4. 快速清理资源
         self.cleanup_resources();
         
         // 5. 记录运行时间
         let uptime = self.lifecycle.get_uptime();
         info!("应用程序已关闭，运行时间: {:.2}秒", uptime.as_secs_f64());
         
-        // 6. 正常退出
+        // 6. 立即退出（不等待其他线程）
         std::process::exit(0);
     }
 }

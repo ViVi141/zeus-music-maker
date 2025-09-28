@@ -94,12 +94,13 @@ winapi = { version = "0.3", features = ["wincon", "winuser", "processthreadsapi"
 # Windows资源处理
 [build-dependencies]
 winres = "0.1"
+embed-resource = "1.5.1"
 
-# 生产环境专用配置 - 极致优化
+# 生产环境专用配置 - 极致优化（便携版）
 [profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
+opt-level = "z"  # 优化文件大小（便携版）
+lto = "fat"      # 链接时优化
+codegen-units = 1 # 单代码生成单元
 panic = "abort"
 strip = "symbols"
 overflow-checks = false
