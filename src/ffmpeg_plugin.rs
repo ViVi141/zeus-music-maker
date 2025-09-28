@@ -47,7 +47,16 @@ impl FFmpegPlugin {
     pub fn new() -> Result<Self> {
         let config_path = Self::get_config_path()?;
         let config = Self::load_config(&config_path)?;
-        Ok(Self { config })
+        let mut plugin = Self { config };
+        
+        // 如果当前配置中没有有效的FFmpeg路径，尝试同步
+        if !plugin.check_ffmpeg_available() {
+            if let Err(e) = plugin.sync_from_downloader_config() {
+                warn!("同步FFmpeg配置失败: {}", e);
+            }
+        }
+        
+        Ok(plugin)
     }
 
 
@@ -208,6 +217,58 @@ impl FFmpegPlugin {
     pub fn reset_config(&mut self) -> Result<()> {
         self.config = FFmpegConfig::default(self.config.config_path.clone());
         self.save_config()?;
+        Ok(())
+    }
+
+    /// 从FFmpegDownloader的配置文件同步路径
+    pub fn sync_from_downloader_config(&mut self) -> Result<()> {
+        // 尝试从FFmpegDownloader的配置文件读取路径
+        if let Ok(workspace) = crate::ffmpeg_downloader::FFmpegDownloader::get_user_workspace() {
+            let path_file = workspace.join("ffmpeg_path.txt");
+            if path_file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&path_file) {
+                    let path = PathBuf::from(content.trim());
+                    if path.exists() {
+                        // 测试路径是否可用
+                        if self.test_ffmpeg_executable(&path).is_ok() {
+                            self.config.ffmpeg_path = Some(path);
+                            self.save_config()?;
+                            info!("已从下载器配置同步FFmpeg路径");
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 如果同步失败，尝试从PATH查找
+        if let Some(path) = self.find_ffmpeg_in_path() {
+            self.config.ffmpeg_path = Some(path);
+            self.save_config()?;
+            info!("已从PATH环境变量同步FFmpeg路径");
+            return Ok(());
+        }
+        
+        Ok(())
+    }
+
+    /// 强制刷新FFmpeg配置（在应用启动时调用）
+    pub fn force_refresh_config(&mut self) -> Result<()> {
+        info!("强制刷新FFmpeg配置...");
+        
+        // 清除当前配置
+        self.config.ffmpeg_path = None;
+        
+        // 尝试同步配置
+        self.sync_from_downloader_config()?;
+        
+        // 检查是否成功
+        if self.check_ffmpeg_available() {
+            info!("FFmpeg配置刷新成功");
+        } else {
+            warn!("FFmpeg配置刷新失败，FFmpeg不可用");
+        }
+        
         Ok(())
     }
 

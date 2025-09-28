@@ -726,9 +726,35 @@ impl AppState {
     
     /// 恢复运行时状态（从配置文件加载后调用）
     fn restore_runtime_state(&mut self) {
-        // 恢复路径缓存
-        self.track_paths = self.tracks.iter().map(|t| t.path.clone()).collect();
-        self.video_paths = self.video_files.iter().map(|v| v.path.clone()).collect();
+        // 清空所有列表和选择（每次启动都重新开始）
+        self.tracks.clear();
+        self.video_files.clear();
+        self.selected_track = None;
+        self.selected_video = None;
+        
+        // 清空路径缓存
+        self.track_paths.clear();
+        self.video_paths.clear();
+        
+        // 清空PAA相关状态
+        self.paa_selected_files.clear();
+        self.paa_output_directory = None;
+        self.paa_result = None;
+        
+        // 清空音频解密相关状态
+        self.audio_decrypt_selected_files.clear();
+        self.audio_decrypt_output_directory = None;
+        self.audio_decrypt_result = None;
+        
+        // 清空音频转换相关状态
+        self.audio_convert_selected_files.clear();
+        self.audio_convert_output_directory = None;
+        self.audio_convert_result = None;
+        
+        // 清空视频转换相关状态
+        self.video_convert_selected_files.clear();
+        self.video_convert_output_directory = None;
+        self.video_convert_result = None;
         
         // 重置运行时状态
         self.runtime_texture_manager = None;
@@ -745,17 +771,17 @@ impl AppState {
         self.show_audio_convert_result = false;
         self.show_video_convert_result = false;
         self.show_manual_path_selection = false;
+        self.show_audio_converter = false;
+        self.show_video_converter = false;
+        self.show_paa_converter = false;
+        self.show_audio_decrypt = false;
         
         // 重置任务状态
         self.task_manager = TaskManager::default();
         
         // 清空临时消息
         self.file_operation_message = None;
-        self.paa_result = None;
         self.export_result = None;
-        self.audio_decrypt_result = None;
-        self.audio_convert_result = None;
-        self.video_convert_result = None;
         
         // 重置下载状态
         self.ffmpeg_download_progress = 0.0;

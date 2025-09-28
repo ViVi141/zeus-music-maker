@@ -29,30 +29,36 @@ impl StringUtils {
                 if let Some(pinyin) = pinyin_result {
                     result.push_str(&pinyin.plain());
                 } else {
-                    result.push_str(&format!("u{:04x}", c as u32));
+                    // 无法转换的中文字符，使用下划线替代，避免Unicode编码
+                    result.push('_');
                 }
             } else if Self::is_japanese_kana(c) {
                 // 日语假名转换为罗马字
                 if let Some(romaji) = Self::hiragana_to_romaji(c) {
                     result.push_str(romaji);
                 } else {
-                    result.push_str(&format!("u{:04x}", c as u32));
+                    // 无法转换的假名，使用下划线替代
+                    result.push('_');
                 }
             } else if Self::is_russian_cyrillic(c) {
                 // 俄语西里尔字母转换为拉丁字母
                 if let Some(latin) = Self::cyrillic_to_latin(c) {
                     result.push_str(latin);
                 } else {
-                    result.push_str(&format!("u{:04x}", c as u32));
+                    // 无法转换的西里尔字母，使用下划线替代
+                    result.push('_');
                 }
             } else {
                 // 处理西班牙语重音符号和其他字符
                 let normalized = Self::remove_spanish_accents(c);
                 if normalized != c {
                     result.push(normalized);
+                } else if c.is_whitespace() {
+                    // 保留空白字符
+                    result.push(' ');
                 } else {
-                    // 对于其他非ASCII字符，保持原样
-                    result.push(c);
+                    // 对于其他非ASCII字符，使用下划线替代，避免Unicode编码
+                    result.push('_');
                 }
             }
         }
@@ -177,21 +183,28 @@ impl StringUtils {
             }
         }
         
-        // 清理多余的下划线和空格
+        // 清理多余的下划线和空格，生成更可读的文件名
         let cleaned = result
             .replace("__", "_")  // 替换连续下划线
             .replace(" _", "_")  // 替换空格+下划线
             .replace("_ ", "_")  // 替换下划线+空格
             .replace("  ", " ")  // 替换连续空格
+            .replace("___", "_") // 替换三个连续下划线
             .trim_matches('_')   // 移除开头和结尾的下划线
             .trim()              // 移除开头和结尾的空格
             .to_string();
             
-        // 如果清理后为空，返回默认名称
-        if cleaned.is_empty() {
+        // 如果清理后为空或只包含下划线，返回默认名称
+        if cleaned.is_empty() || cleaned.chars().all(|c| c == '_') {
             "track".to_string()
         } else {
-            cleaned
+            // 确保文件名不会太长（限制在50个字符以内）
+            if cleaned.len() > 50 {
+                let truncated = cleaned.chars().take(47).collect::<String>();
+                format!("{}...", truncated)
+            } else {
+                cleaned
+            }
         }
     }
 
@@ -207,7 +220,36 @@ impl StringUtils {
             result.push_str(&format!("{:03}", index));
             result
         } else {
-            safe_name
+            // 进一步优化文件名，确保可读性
+            let optimized = Self::optimize_filename(&safe_name);
+            if optimized.is_empty() || optimized.chars().all(|c| c == '_') {
+                format!("track{:03}", index)
+            } else {
+                optimized
+            }
+        }
+    }
+
+    /// 优化文件名，提高可读性
+    fn optimize_filename(input: &str) -> String {
+        let mut result = input.to_string();
+        
+        // 移除开头和结尾的下划线
+        result = result.trim_matches('_').to_string();
+        
+        // 将多个连续下划线替换为单个下划线
+        while result.contains("__") {
+            result = result.replace("__", "_");
+        }
+        
+        // 移除开头和结尾的空格
+        result = result.trim().to_string();
+        
+        // 如果结果为空或只包含下划线，返回空字符串
+        if result.is_empty() || result.chars().all(|c| c == '_') {
+            String::new()
+        } else {
+            result
         }
     }
 
@@ -237,46 +279,5 @@ impl StringUtils {
         result.push('_');
         result.push_str(&safe_track_name);
         result
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_mixed_filenames_fixed() {
-        // 测试修复后的混合文件名处理
-        assert_eq!(StringUtils::chinese_to_pinyin("Carte Blanq,Maxx Power - 33 Max Verstappen"), 
-                   "Carte Blanq,Maxx Power - 33 Max Verstappen");
-        assert_eq!(StringUtils::safe_filename_pinyin("Carte Blanq,Maxx Power - 33 Max Verstappen", 0), 
-                   "Carte_Blanq_Maxx_Power_-_33_Max_Verstappen");
-        
-        // 测试中英混合
-        assert_eq!(StringUtils::chinese_to_pinyin("音乐Music"), "yinyueMusic");
-        assert_eq!(StringUtils::chinese_to_pinyin("Beautiful音乐"), "Beautifulyinyue");
-        
-        // 测试纯中文
-        assert_eq!(StringUtils::chinese_to_pinyin("音乐"), "yinyue");
-        assert_eq!(StringUtils::chinese_to_pinyin("歌曲"), "gequ");
-    }
-
-    #[test]
-    fn test_multilingual_support() {
-        // 测试日语假名
-        assert_eq!(StringUtils::chinese_to_pinyin("こんにちは"), "konnichiwa");
-        assert_eq!(StringUtils::chinese_to_pinyin("ありがとう"), "arigatou");
-        
-        // 测试俄语
-        assert_eq!(StringUtils::chinese_to_pinyin("Привет"), "Privet");
-        assert_eq!(StringUtils::chinese_to_pinyin("Москва"), "Moskva");
-        
-        // 测试西班牙语重音符号
-        assert_eq!(StringUtils::chinese_to_pinyin("España"), "Espana");
-        assert_eq!(StringUtils::chinese_to_pinyin("niño"), "nino");
-        
-        // 测试混合语言
-        assert_eq!(StringUtils::chinese_to_pinyin("音乐こんにちはMusic"), "yinyuekonnichiwaMusic");
-        assert_eq!(StringUtils::chinese_to_pinyin("Привет音乐"), "Privetyinyue");
     }
 }

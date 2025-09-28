@@ -624,14 +624,25 @@ impl ThreadedTaskProcessor {
             // 发送完成消息
             match result {
                 Ok(ffmpeg_path) => {
-                    // 保存路径配置
+                    // 保存路径配置到两个系统
                     if let Err(e) = FFmpegDownloader::save_ffmpeg_path(&ffmpeg_path) {
                         warn!("保存 FFmpeg 路径失败: {}", e);
+                    }
+                    
+                    // 同时更新FFmpegPlugin配置
+                    if let Ok(mut ffmpeg_plugin) = crate::ffmpeg_plugin::FFmpegPlugin::new() {
+                        if let Err(e) = ffmpeg_plugin.set_ffmpeg_path(ffmpeg_path.clone()) {
+                            warn!("更新 FFmpegPlugin 配置失败: {}", e);
+                        } else {
+                            info!("FFmpegPlugin 配置已更新");
+                        }
+                    } else {
+                        warn!("无法创建 FFmpegPlugin 实例");
                     }
 
                     let _ = progress_sender.send(TaskMessage::FFmpegDownloadCompleted {
                         success: true,
-                        message: format!("FFmpeg 下载成功！\n路径: {}", ffmpeg_path.display()),
+                        message: format!("FFmpeg 下载成功！\n路径: {}\n配置已自动更新", ffmpeg_path.display()),
                     });
                 }
                 Err(e) => {

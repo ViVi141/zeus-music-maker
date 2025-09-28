@@ -2939,6 +2939,22 @@ impl UIComponents {
                             should_close = true;
                         }
                         
+                        if ui.button("强制刷新配置").clicked() {
+                            if let Ok(mut plugin) = crate::ffmpeg_plugin::FFmpegPlugin::new() {
+                                match plugin.force_refresh_config() {
+                                    Ok(_) => {
+                                        state.file_operation_message = Some("FFmpeg配置已强制刷新".to_string());
+                                    }
+                                    Err(e) => {
+                                        state.file_operation_message = Some(format!("强制刷新配置失败: {}", e));
+                                    }
+                                }
+                            } else {
+                                state.file_operation_message = Some("无法创建FFmpeg插件实例".to_string());
+                            }
+                            ui.ctx().request_repaint();
+                        }
+                        
                         if ui.button("刷新状态").clicked() {
                             ui.ctx().request_repaint();
                         }

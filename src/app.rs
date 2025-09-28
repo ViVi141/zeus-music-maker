@@ -30,6 +30,17 @@ impl ZeusMusicApp {
             lifecycle: lifecycle::AppLifecycle::new(),
         };
         
+        // 强制刷新FFmpeg配置，确保下载后的路径被正确识别
+        if let Ok(mut ffmpeg_plugin) = crate::ffmpeg_plugin::FFmpegPlugin::new() {
+            if let Err(e) = ffmpeg_plugin.force_refresh_config() {
+                warn!("刷新FFmpeg配置失败: {}", e);
+            } else {
+                info!("FFmpeg配置已刷新");
+            }
+        } else {
+            warn!("无法创建FFmpeg插件实例");
+        }
+        
         // 首次启动时自动显示用户指导
         if app.state.is_first_launch {
             app.state.show_user_guide = true;
@@ -397,9 +408,35 @@ impl ZeusMusicApp {
         // 清理任务处理器
         self.task_processor.cancel_task();
         
-        // 清理状态
+        // 清理状态 - 清空所有列表和选择
         self.state.tracks.clear();
+        self.state.video_files.clear();
         self.state.selected_track = None;
+        self.state.selected_video = None;
+        
+        // 清理路径缓存
+        self.state.track_paths.clear();
+        self.state.video_paths.clear();
+        
+        // 清理PAA相关状态
+        self.state.paa_selected_files.clear();
+        self.state.paa_output_directory = None;
+        self.state.paa_result = None;
+        
+        // 清理音频解密相关状态
+        self.state.audio_decrypt_selected_files.clear();
+        self.state.audio_decrypt_output_directory = None;
+        self.state.audio_decrypt_result = None;
+        
+        // 清理音频转换相关状态
+        self.state.audio_convert_selected_files.clear();
+        self.state.audio_convert_output_directory = None;
+        self.state.audio_convert_result = None;
+        
+        // 清理视频转换相关状态
+        self.state.video_convert_selected_files.clear();
+        self.state.video_convert_output_directory = None;
+        self.state.video_convert_result = None;
         
         // 清理UI状态
         self.state.show_project_settings = false;
@@ -408,6 +445,12 @@ impl ZeusMusicApp {
         self.state.show_track_editor = false;
         self.state.show_paa_converter = false;
         self.state.show_audio_decrypt = false;
+        self.state.show_audio_converter = false;
+        self.state.show_video_converter = false;
+        
+        // 清理临时消息
+        self.state.file_operation_message = None;
+        self.state.export_result = None;
         
         info!("资源清理完成");
     }
