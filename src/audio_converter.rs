@@ -6,7 +6,7 @@ use crate::ffmpeg_plugin::FFmpegPlugin;
 
 /// FFmpeg 音频转换器
 pub struct AudioConverter {
-    ffmpeg_path: PathBuf,
+    pub ffmpeg_path: PathBuf,
 }
 
 impl AudioConverter {
@@ -38,7 +38,7 @@ impl AudioConverter {
         should_cancel: &F,
     ) -> Result<String>
     where
-        F: Fn() -> bool,
+        F: Fn() -> bool + ?Sized,
     {
         // 检查取消标志
         if should_cancel() {
@@ -72,19 +72,19 @@ impl AudioConverter {
             output_str,
         ]);
         
-        // 执行转换
-        let mut child = cmd
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-            
-        // 在 Windows 上隐藏命令行窗口
+        // 在Windows上隐藏命令行窗口
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
-            child = child.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
         
-        let mut child = child.spawn().context("启动 FFmpeg 失败")?;
+        // 执行转换
+        let mut child = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("启动 FFmpeg 失败")?;
         
         // 设置进程优先级为高优先级（Windows）
         #[cfg(target_os = "windows")]

@@ -9,6 +9,7 @@ use crate::paa_converter::{PaaConverter, PaaOptions};
 use crate::audio_converter::AudioConverter;
 use crate::video_converter::VideoConverter;
 use crate::ffmpeg_downloader::FFmpegDownloader;
+use crate::parallel_converter::{ParallelConverter, ParallelConfig, ProgressUpdate};
 
 /// 任务消息
 #[derive(Debug, Clone)]
@@ -34,6 +35,8 @@ pub enum TaskMessage {
         success: bool,
         message: String,
     },
+    /// 并行转换进度更新
+    ParallelProgressUpdate(ProgressUpdate),
 }
 
 /// 多线程任务处理器
@@ -44,6 +47,8 @@ pub struct ThreadedTaskProcessor {
     progress_receiver: Receiver<TaskMessage>,
     /// 取消标志
     cancel_flag: Arc<Mutex<bool>>,
+    /// 并行转换器
+    parallel_converter: Option<ParallelConverter>,
 }
 
 impl ThreadedTaskProcessor {
@@ -54,6 +59,7 @@ impl ThreadedTaskProcessor {
             progress_sender,
             progress_receiver,
             cancel_flag: Arc::new(Mutex::new(false)),
+            parallel_converter: None,
         }
     }
 
@@ -240,7 +246,34 @@ impl ThreadedTaskProcessor {
         Ok(())
     }
 
-    /// 处理音频格式转换任务
+    /// 处理音频格式转换任务（并行版本）
+    pub fn process_audio_convert_parallel(
+        &self,
+        files: Vec<PathBuf>,
+        output_dir: PathBuf,
+    ) -> Result<()> {
+        info!("使用并行转换处理音频文件: {} 个文件", files.len());
+        
+        // 创建并行转换器
+        let mut config = ParallelConfig::default();
+        
+        // 根据文件数量和大小调整配置
+        if files.len() > 10 {
+            config.adjust_for_file_size(files.len(), 50.0); // 假设平均50MB
+        }
+        
+        let parallel_converter = ParallelConverter::new(config);
+        
+        // 启动并行转换
+        parallel_converter.convert_audio_files_parallel(files, output_dir)?;
+        
+        // 启动进度转发线程
+        self.start_progress_forwarding(parallel_converter);
+        
+        Ok(())
+    }
+    
+    /// 处理音频格式转换任务（串行版本，保持向后兼容）
     pub fn process_audio_convert(
         &self,
         files: Vec<PathBuf>,
@@ -347,7 +380,37 @@ impl ThreadedTaskProcessor {
         Ok(())
     }
 
-    /// 处理视频格式转换任务
+    /// 处理视频格式转换任务（并行版本）
+    pub fn process_video_convert_parallel(
+        &self,
+        files: Vec<PathBuf>,
+        output_dir: PathBuf,
+    ) -> Result<()> {
+        info!("使用并行转换处理视频文件: {} 个文件", files.len());
+        
+        // 创建并行转换器
+        let mut config = ParallelConfig::default();
+        
+        // 视频转换通常更消耗资源，减少并发数
+        config.max_threads = (config.max_threads / 2).max(2);
+        
+        // 根据文件数量和大小调整配置
+        if files.len() > 5 {
+            config.adjust_for_file_size(files.len(), 200.0); // 假设平均200MB
+        }
+        
+        let parallel_converter = ParallelConverter::new(config);
+        
+        // 启动并行转换
+        parallel_converter.convert_video_files_parallel(files, output_dir)?;
+        
+        // 启动进度转发线程
+        self.start_progress_forwarding(parallel_converter);
+        
+        Ok(())
+    }
+    
+    /// 处理视频格式转换任务（串行版本，保持向后兼容）
     pub fn process_video_convert(
         &self,
         files: Vec<PathBuf>,
@@ -538,9 +601,44 @@ impl ThreadedTaskProcessor {
         &self.progress_receiver
     }
 
+    /// 启动进度转发线程
+    fn start_progress_forwarding(&self, parallel_converter: ParallelConverter) {
+        let progress_sender = self.progress_sender.clone();
+        let cancel_flag = self.cancel_flag.clone();
+        
+        thread::spawn(move || {
+            let receiver = parallel_converter.get_progress_receiver();
+            
+            while let Ok(update) = receiver.recv() {
+                // 检查取消标志
+                if *cancel_flag.lock().unwrap_or_else(|_| {
+                    warn!("获取取消标志失败，假设任务被取消");
+                    panic!("Mutex poisoned, cannot continue")
+                }) {
+                    info!("进度转发线程收到取消信号");
+                    break;
+                }
+                
+                // 转发进度更新
+                if let Err(e) = progress_sender.send(TaskMessage::ParallelProgressUpdate(update)) {
+                    warn!("转发进度更新失败: {}", e);
+                    break;
+                }
+            }
+            
+            info!("进度转发线程退出");
+        });
+    }
+    
     /// 取消当前任务
     pub fn cancel_task(&self) {
         *self.cancel_flag.lock().unwrap() = true;
+        
+        // 如果存在并行转换器，也取消它
+        if let Some(ref converter) = self.parallel_converter {
+            converter.cancel_all_tasks();
+        }
+        
         info!("任务取消信号已发送");
     }
 

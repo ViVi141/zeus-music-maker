@@ -6,7 +6,7 @@ use crate::ffmpeg_plugin::FFmpegPlugin;
 
 /// 视频转换器
 pub struct VideoConverter {
-    ffmpeg_path: PathBuf,
+    pub ffmpeg_path: PathBuf,
 }
 
 impl VideoConverter {

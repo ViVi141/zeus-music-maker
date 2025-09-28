@@ -19,6 +19,8 @@ mod ffmpeg_downloader;
 mod templates;
 mod ui;
 mod threading;
+mod parallel_converter;
+mod resource_manager;
 mod embedded;
 mod utils;
 

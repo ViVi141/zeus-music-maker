@@ -4,6 +4,7 @@ use log::{info, warn};
 use crate::models::AppState;
 use crate::ui::UIComponents;
 use crate::threading::ThreadedTaskProcessor;
+use crate::parallel_converter::ProgressUpdate;
 
 pub mod lifecycle;
 
@@ -195,6 +196,9 @@ impl ZeusMusicApp {
                         self.state.task_manager.update_progress(current_file, &filename);
                     }
                 }
+                TaskMessage::ParallelProgressUpdate(update) => {
+                    self.handle_parallel_progress_update(update);
+                }
                 TaskMessage::FFmpegDownloadProgress { progress, status } => {
                     self.state.ffmpeg_download_progress = progress;
                     // 添加调试日志
@@ -285,8 +289,21 @@ impl ZeusMusicApp {
         self.state.task_manager.start_task(crate::models::TaskType::AudioConvert, files.len());
         self.task_processor.reset_cancel_flag();
         
-        if let Err(e) = self.task_processor.process_audio_convert(files, output_dir) {
-            self.state.task_manager.fail_task(format!("启动音频转换任务失败: {}", e));
+        // 优先使用并行转换，如果文件数量较少则使用串行转换
+        if files.len() > 3 {
+            info!("使用并行转换处理 {} 个音频文件", files.len());
+            
+            // 延迟启动并行转换，确保进度对话框先显示
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            
+            if let Err(e) = self.task_processor.process_audio_convert_parallel(files, output_dir) {
+                self.state.task_manager.fail_task(format!("启动并行音频转换任务失败: {}", e));
+            }
+        } else {
+            info!("使用串行转换处理 {} 个音频文件", files.len());
+            if let Err(e) = self.task_processor.process_audio_convert(files, output_dir) {
+                self.state.task_manager.fail_task(format!("启动音频转换任务失败: {}", e));
+            }
         }
     }
 
@@ -295,8 +312,21 @@ impl ZeusMusicApp {
         self.state.task_manager.start_task(crate::models::TaskType::VideoConvert, files.len());
         self.task_processor.reset_cancel_flag();
         
-        if let Err(e) = self.task_processor.process_video_convert(files, output_dir) {
-            self.state.task_manager.fail_task(format!("启动视频转换任务失败: {}", e));
+        // 优先使用并行转换，如果文件数量较少则使用串行转换
+        if files.len() > 2 {
+            info!("使用并行转换处理 {} 个视频文件", files.len());
+            
+            // 延迟启动并行转换，确保进度对话框先显示
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            
+            if let Err(e) = self.task_processor.process_video_convert_parallel(files, output_dir) {
+                self.state.task_manager.fail_task(format!("启动并行视频转换任务失败: {}", e));
+            }
+        } else {
+            info!("使用串行转换处理 {} 个视频文件", files.len());
+            if let Err(e) = self.task_processor.process_video_convert(files, output_dir) {
+                self.state.task_manager.fail_task(format!("启动视频转换任务失败: {}", e));
+            }
         }
     }
 
@@ -342,5 +372,92 @@ impl ZeusMusicApp {
     pub fn get_uptime(&self) -> std::time::Duration {
         self.lifecycle.get_uptime()
     }
-
+    
+    /// 处理并行转换进度更新
+    fn handle_parallel_progress_update(&mut self, update: ProgressUpdate) {
+        match update {
+            ProgressUpdate::TaskStarted { task_id, filename, total_tasks } => {
+                info!("并行任务开始: {} ({}), 总计: {}", task_id, filename, total_tasks);
+                
+                // 更新任务管理器进度
+                if let Some(ref mut task) = self.state.task_manager.current_task {
+                    task.current_file = task_id + 1; // 显示当前正在处理的任务编号（从1开始）
+                    task.current_filename = filename;
+                    task.total_files = total_tasks;
+                    // 任务开始时进度保持不变，等待任务完成时再更新
+                }
+            }
+            ProgressUpdate::TaskCompleted { task_id, result, completed_count, total_tasks } => {
+                info!("并行任务完成: {} ({}), 已完成: {}/{}", task_id, result.input_path().display(), completed_count, total_tasks);
+                
+                // 更新进度
+                if let Some(ref mut task) = self.state.task_manager.current_task {
+                    task.current_file = completed_count;
+                    task.progress = completed_count as f32 / total_tasks as f32;
+                    
+                    // 根据结果更新任务信息
+                    match result {
+                        crate::parallel_converter::ConversionResult::Success { message, .. } => {
+                            task.current_filename = format!("✓ {}", message);
+                        }
+                        crate::parallel_converter::ConversionResult::Error { error, .. } => {
+                            task.current_filename = format!("✗ {}", error);
+                        }
+                    }
+                    
+                    // 更新处理速度
+                    if let Some(start_time) = task.start_time {
+                        let elapsed = start_time.elapsed().unwrap_or_default();
+                        if elapsed.as_secs_f32() > 0.0 {
+                            task.processing_speed = Some(completed_count as f32 / elapsed.as_secs_f32());
+                        }
+                        
+                        // 估算剩余时间
+                        if completed_count > 0 && completed_count < total_tasks {
+                            let remaining_files = total_tasks - completed_count;
+                            if let Some(speed) = task.processing_speed {
+                                task.estimated_remaining = Some((remaining_files as f32 / speed) as u64);
+                            }
+                        }
+                    }
+                }
+            }
+            ProgressUpdate::AllTasksCompleted { success_count, error_count, total_duration, results } => {
+                info!("所有并行任务完成: 成功={}, 失败={}, 耗时={:.2}秒", 
+                    success_count, error_count, total_duration.as_secs_f64());
+                
+                // 完成任务
+                self.state.task_manager.complete_task();
+                
+                // 根据任务类型处理结果
+                if let Some(ref task) = self.state.task_manager.task_history.last() {
+                    match task.task_type {
+                        crate::models::TaskType::AudioConvert => {
+                            let result_message = format!(
+                                "并行音频转换完成！\n\n成功: {}\n失败: {}\n总耗时: {:.2}秒\n\n详细结果:\n{}",
+                                success_count,
+                                error_count,
+                                total_duration.as_secs_f64(),
+                                results.iter().map(|r| format!("• {}", r)).collect::<Vec<_>>().join("\n")
+                            );
+                            self.state.audio_convert_result = Some(result_message);
+                            self.state.show_audio_convert_result = true;
+                        }
+                        crate::models::TaskType::VideoConvert => {
+                            let result_message = format!(
+                                "并行视频转换完成！\n\n成功: {}\n失败: {}\n总耗时: {:.2}秒\n\n详细结果:\n{}",
+                                success_count,
+                                error_count,
+                                total_duration.as_secs_f64(),
+                                results.iter().map(|r| format!("• {}", r)).collect::<Vec<_>>().join("\n")
+                            );
+                            self.state.video_convert_result = Some(result_message);
+                            self.state.show_video_convert_result = true;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
 }

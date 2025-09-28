@@ -540,67 +540,6 @@ pub struct AppState {
 
 
 impl AppState {
-    /// 获取配置文件路径
-    pub fn get_config_path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| std::env::current_dir().unwrap())
-            .join("ZeusMusicMaker")
-            .join("config.json")
-    }
-
-    /// 加载配置文件
-    pub fn load_config() -> Self {
-        let config_path = Self::get_config_path();
-        
-        // 如果配置文件不存在，返回默认配置
-        if !config_path.exists() {
-            let mut state = Self::default();
-            state.config_file_path = Some(config_path);
-            return state;
-        }
-
-        // 尝试加载配置文件
-        match std::fs::read_to_string(&config_path) {
-            Ok(content) => {
-                match serde_json::from_str::<Self>(&content) {
-                    Ok(mut state) => {
-                        state.config_file_path = Some(config_path);
-                        state.is_first_launch = false; // 配置文件存在，不是首次启动
-                        state
-                    }
-                    Err(e) => {
-                        log::warn!("配置文件解析失败: {}, 使用默认配置", e);
-                        let mut state = Self::default();
-                        state.config_file_path = Some(config_path);
-                        state
-                    }
-                }
-            }
-            Err(e) => {
-                log::warn!("读取配置文件失败: {}, 使用默认配置", e);
-                let mut state = Self::default();
-                state.config_file_path = Some(config_path);
-                state
-            }
-        }
-    }
-
-    /// 保存配置文件
-    pub fn save_config(&self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(config_path) = &self.config_file_path {
-            // 确保配置目录存在
-            if let Some(parent) = config_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-
-            // 序列化并保存
-            let content = serde_json::to_string_pretty(self)?;
-            std::fs::write(config_path, content)?;
-            log::info!("配置文件已保存: {:?}", config_path);
-        }
-        Ok(())
-    }
-
     /// 防重复添加轨道（基于文件路径）
     pub fn add_track_with_duplicate_check(&mut self, track: Track) -> bool {
         // 使用HashSet进行O(1)重复检测
@@ -731,6 +670,98 @@ impl AppState {
         self.video_files.clear();
         self.video_paths.clear();
         self.selected_video = None;
+    }
+}
+
+impl AppState {
+    /// 从配置文件加载状态
+    pub fn load_config() -> Self {
+        let config_path = Self::get_config_path();
+        
+        // 尝试从配置文件加载
+        if let Ok(config_content) = std::fs::read_to_string(&config_path) {
+            if let Ok(mut state) = serde_json::from_str::<AppState>(&config_content) {
+                // 恢复运行时状态
+                state.restore_runtime_state();
+                log::info!("从配置文件加载状态: {:?}", config_path);
+                return state;
+            } else {
+                log::warn!("配置文件格式错误，使用默认状态");
+            }
+        } else {
+            log::info!("配置文件不存在，使用默认状态");
+        }
+        
+        // 使用默认状态
+        Self::default()
+    }
+    
+    /// 保存状态到配置文件
+    pub fn save_config(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let config_path = Self::get_config_path();
+        
+        // 确保配置目录存在
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        
+        // 序列化状态（排除运行时状态）
+        let config_json = serde_json::to_string_pretty(self)?;
+        std::fs::write(&config_path, config_json)?;
+        
+        log::info!("状态已保存到配置文件: {:?}", config_path);
+        Ok(())
+    }
+    
+    /// 获取配置文件路径
+    fn get_config_path() -> std::path::PathBuf {
+        // 使用用户配置目录
+        if let Some(config_dir) = dirs::config_dir() {
+            config_dir.join("zeus-music-maker").join("config.json")
+        } else {
+            // 备用路径
+            std::env::current_dir().unwrap().join("config.json")
+        }
+    }
+    
+    /// 恢复运行时状态（从配置文件加载后调用）
+    fn restore_runtime_state(&mut self) {
+        // 恢复路径缓存
+        self.track_paths = self.tracks.iter().map(|t| t.path.clone()).collect();
+        self.video_paths = self.video_files.iter().map(|v| v.path.clone()).collect();
+        
+        // 重置运行时状态
+        self.runtime_texture_manager = None;
+        
+        // 重置UI状态（这些不应该被持久化）
+        self.show_project_settings = false;
+        self.show_export_dialog = false;
+        self.show_about = false;
+        self.show_track_editor = false;
+        self.show_paa_preview = false;
+        self.show_paa_result = false;
+        self.show_export_result = false;
+        self.show_audio_decrypt_result = false;
+        self.show_audio_convert_result = false;
+        self.show_video_convert_result = false;
+        self.show_manual_path_selection = false;
+        
+        // 重置任务状态
+        self.task_manager = TaskManager::default();
+        
+        // 清空临时消息
+        self.file_operation_message = None;
+        self.paa_result = None;
+        self.export_result = None;
+        self.audio_decrypt_result = None;
+        self.audio_convert_result = None;
+        self.video_convert_result = None;
+        
+        // 重置下载状态
+        self.ffmpeg_download_progress = 0.0;
+        self.ffmpeg_download_status.clear();
+        self.is_downloading_ffmpeg = false;
+        self.ffmpeg_download_started = false;
     }
 }
 

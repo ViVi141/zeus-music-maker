@@ -18,9 +18,9 @@ impl StringUtils {
                 // 保留ASCII字母数字
                 result.push(c);
             } else if c.is_ascii_punctuation() {
-                // 处理标点符号
+                // 处理标点符号 - 保留常用的安全符号
                 match c {
-                    ' ' | '-' | '_' | '.' | ',' | '!' | '?' => result.push(c),
+                    ' ' | '-' | '_' | '.' | ',' | '!' | '?' | ':' | ';' | '(' | ')' => result.push(c),
                     _ => result.push('_'),
                 }
             } else if Self::is_chinese_char(c) {
@@ -91,6 +91,7 @@ impl StringUtils {
     /// 简单的日语假名转罗马字（平假名）
     fn hiragana_to_romaji(c: char) -> Option<&'static str> {
         match c {
+            // 基本假名
             'あ' => Some("a"), 'い' => Some("i"), 'う' => Some("u"), 'え' => Some("e"), 'お' => Some("o"),
             'か' => Some("ka"), 'き' => Some("ki"), 'く' => Some("ku"), 'け' => Some("ke"), 'こ' => Some("ko"),
             'さ' => Some("sa"), 'し' => Some("shi"), 'す' => Some("su"), 'せ' => Some("se"), 'そ' => Some("so"),
@@ -101,6 +102,20 @@ impl StringUtils {
             'や' => Some("ya"), 'ゆ' => Some("yu"), 'よ' => Some("yo"),
             'ら' => Some("ra"), 'り' => Some("ri"), 'る' => Some("ru"), 'れ' => Some("re"), 'ろ' => Some("ro"),
             'わ' => Some("wa"), 'を' => Some("wo"), 'ん' => Some("n"),
+            
+            // 小字符
+            'っ' => Some("tsu"), 'ぁ' => Some("a"), 'ぃ' => Some("i"), 'ぅ' => Some("u"), 'ぇ' => Some("e"), 'ぉ' => Some("o"),
+            
+            // 浊音
+            'が' => Some("ga"), 'ぎ' => Some("gi"), 'ぐ' => Some("gu"), 'げ' => Some("ge"), 'ご' => Some("go"),
+            'ざ' => Some("za"), 'じ' => Some("ji"), 'ず' => Some("zu"), 'ぜ' => Some("ze"), 'ぞ' => Some("zo"),
+            'だ' => Some("da"), 'ぢ' => Some("ji"), 'づ' => Some("zu"), 'で' => Some("de"), 'ど' => Some("do"),
+            'ば' => Some("ba"), 'び' => Some("bi"), 'ぶ' => Some("bu"), 'べ' => Some("be"), 'ぼ' => Some("bo"),
+            
+            // 半浊音
+            'ぱ' => Some("pa"), 'ぴ' => Some("pi"), 'ぷ' => Some("pu"), 'ぺ' => Some("pe"), 'ぽ' => Some("po"),
+            
+            
             _ => None,
         }
     }
@@ -155,13 +170,29 @@ impl StringUtils {
         // 然后确保所有字符都是ASCII安全的
         let mut result = String::with_capacity(pinyin_input.len());
         for c in pinyin_input.chars() {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' ' || c == '.' {
                 result.push(c);
             } else {
                 result.push('_');
             }
         }
-        result
+        
+        // 清理多余的下划线和空格
+        let cleaned = result
+            .replace("__", "_")  // 替换连续下划线
+            .replace(" _", "_")  // 替换空格+下划线
+            .replace("_ ", "_")  // 替换下划线+空格
+            .replace("  ", " ")  // 替换连续空格
+            .trim_matches('_')   // 移除开头和结尾的下划线
+            .trim()              // 移除开头和结尾的空格
+            .to_string();
+            
+        // 如果清理后为空，返回默认名称
+        if cleaned.is_empty() {
+            "track".to_string()
+        } else {
+            cleaned
+        }
     }
 
     
@@ -181,20 +212,6 @@ impl StringUtils {
     }
 
 
-    /// 从文件路径生成轨道名称（拼音风格）
-    #[allow(dead_code)]
-    pub fn generate_track_name_from_path_pinyin(path: &std::path::Path, index: usize) -> String {
-        if let Some(filename) = path.file_stem() {
-            let name = filename.to_string_lossy();
-            Self::safe_filename_pinyin(&name, index)
-        } else {
-            // 使用预分配的String避免多次分配
-            let mut result = String::with_capacity(10);
-            result.push_str("track");
-            result.push_str(&format!("{:03}", index));
-            result
-        }
-    }
 
     /// 从文件路径生成轨道名称
     pub fn generate_track_name_from_path(path: &std::path::Path, index: usize) -> String {
@@ -210,17 +227,6 @@ impl StringUtils {
         }
     }
 
-    /// 生成类名（拼音风格）
-    #[allow(dead_code)]
-    pub fn generate_class_name_pinyin(track_name: &str, base_class: &str, _index: usize) -> String {
-        let safe_track_name = Self::to_ascii_safe_pinyin(track_name);
-        // 使用预分配的String避免多次分配
-        let mut result = String::with_capacity(base_class.len() + safe_track_name.len() + 1);
-        result.push_str(base_class);
-        result.push('_');
-        result.push_str(&safe_track_name);
-        result
-    }
 
     /// 生成类名
     pub fn generate_class_name(track_name: &str, base_class: &str, _index: usize) -> String {

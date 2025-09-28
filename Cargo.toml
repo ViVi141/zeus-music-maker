@@ -79,11 +79,14 @@ futures-util = "0.3"
 # Chinese pinyin conversion
 pinyin = "0.10"
 
+# CPU information for optimal thread count
+num_cpus = "1.0"
+
 # Windows DLL support
 [target.'cfg(windows)'.dependencies]
 libc = "0.2"
 libloading = "0.8"
-winapi = { version = "0.3", features = ["wincon", "winuser", "processthreadsapi", "handleapi"] }
+winapi = { version = "0.3", features = ["wincon", "winuser", "processthreadsapi", "handleapi", "psapi"] }
 
 # Windows资源处理
 [build-dependencies]

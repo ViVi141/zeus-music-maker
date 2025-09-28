@@ -149,7 +149,8 @@ impl FFmpegPlugin {
     /// 获取FFmpeg路径
     pub fn get_ffmpeg_path(&self) -> Option<PathBuf> {
         if let Some(ref path) = self.config.ffmpeg_path {
-            if self.test_ffmpeg_executable(path).is_ok() {
+            // 如果配置的路径存在，直接返回，避免重复测试
+            if path.exists() {
                 return Some(path.clone());
             }
         }
