@@ -4,7 +4,6 @@
  */
 
 use std::env;
-use std::path::Path;
 
 fn main() {
     // 只在Windows平台设置资源
@@ -22,18 +21,9 @@ fn main() {
         // 设置应用程序类型为Windows GUI应用（无控制台窗口）
         res.set("ApplicationManifest", "app.manifest");
         
-        // 设置图标 - 尝试使用PNG文件
-        if Path::new("assets/zeus_music_maker.png").exists() {
-            // 使用PNG文件作为图标源
-            res.set_icon("assets/zeus_music_maker.png");
-            println!("cargo:warning=使用PNG图标文件: assets/zeus_music_maker.png");
-        } else if Path::new("favicon.ico").exists() {
-            // 备用：使用ICO文件
-            res.set_icon("favicon.ico");
-            println!("cargo:warning=使用ICO图标文件: favicon.ico");
-        } else {
-            println!("cargo:warning=未找到图标文件，将使用默认图标");
-        }
+        // 暂时禁用图标嵌入，避免构建失败
+        // TODO: 后续可以通过其他方式添加图标
+        println!("cargo:warning=暂时跳过图标嵌入，专注于功能实现");
         
         // 编译资源文件
         match res.compile() {

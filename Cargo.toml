@@ -11,14 +11,10 @@ license = "CC-BY-SA-4.0"
 eframe = "0.27.2"
 egui = "0.27.2"
 
-# Chinese font support
-include_dir = "0.7"
-
 # 嵌入资源文件
 rust-embed = "8.4"
 
 # File operations
-walkdir = "2.4"
 dirs = "5.0"
 rfd = "0.13"
 
@@ -44,19 +40,14 @@ env_logger = "0.10"
 # Image processing
 image = "0.25"
 
-# PAA conversion (WebAssembly)
-wasmtime = "20.0"
-wasmtime-wasi = "20.0"
+# PAA conversion (纯Rust实现)
 
 
 # Audio decryption
 xz2 = "0.1.7"
 infer = "0.19.0"
 
-# AES encryption for NetEase NCM
-aes = "0.8"
-base64 = "0.22"
-hex = "0.4"
+# NetEase NCM decryption (使用DLL)
 
 # Threading and async support
 tokio = { version = "1.40", features = ["rt", "rt-multi-thread", "net", "fs", "io-util", "time"] }
@@ -83,7 +74,7 @@ rayon = "1.10"
 [target.'cfg(windows)'.dependencies]
 libc = "0.2"
 libloading = "0.8"
-winapi = { version = "0.3", features = ["wincon", "winuser", "processthreadsapi", "handleapi", "psapi"] }
+winapi = { version = "0.3", features = ["wincon", "winuser", "processthreadsapi", "handleapi", "psapi", "winbase"] }
 
 # Windows资源处理
 [build-dependencies]
