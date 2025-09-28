@@ -14,6 +14,8 @@ mod paa_converter;
 mod audio_decrypt;
 mod audio_converter;
 mod video_converter;
+mod video_chunk_converter;
+mod video_chunk_parallel_processor;
 mod ffmpeg_plugin;
 mod ffmpeg_downloader;
 mod templates;

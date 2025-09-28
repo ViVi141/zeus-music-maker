@@ -199,6 +199,9 @@ impl ZeusMusicApp {
                 TaskMessage::ParallelProgressUpdate(update) => {
                     self.handle_parallel_progress_update(update);
                 }
+                TaskMessage::ChunkProgressUpdate(update) => {
+                    self.handle_chunk_progress_update(update);
+                }
                 TaskMessage::FFmpegDownloadProgress { progress, status } => {
                     self.state.ffmpeg_download_progress = progress;
                     // 添加调试日志
@@ -312,9 +315,23 @@ impl ZeusMusicApp {
         self.state.task_manager.start_task(crate::models::TaskType::VideoConvert, files.len());
         self.task_processor.reset_cancel_flag();
         
-        // 优先使用并行转换，如果文件数量较少则使用串行转换
-        if files.len() > 2 {
-            info!("使用并行转换处理 {} 个视频文件", files.len());
+        // 智能选择转换策略
+        let total_files = files.len();
+        let avg_file_size = self.calculate_average_file_size(&files);
+        
+        // 根据文件数量和大小选择最佳转换策略
+        if total_files > 3 || avg_file_size > 100_000_000 { // 大于100MB或超过3个文件
+            info!("使用分片并行转换处理 {} 个视频文件 (平均大小: {:.1}MB)", 
+                  total_files, avg_file_size as f64 / 1_000_000.0);
+            
+            // 延迟启动分片转换，确保进度对话框先显示
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            
+            if let Err(e) = self.task_processor.process_video_convert_chunked(files, output_dir) {
+                self.state.task_manager.fail_task(format!("启动分片并行视频转换任务失败: {}", e));
+            }
+        } else if total_files > 2 {
+            info!("使用并行转换处理 {} 个视频文件", total_files);
             
             // 延迟启动并行转换，确保进度对话框先显示
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -323,11 +340,25 @@ impl ZeusMusicApp {
                 self.state.task_manager.fail_task(format!("启动并行视频转换任务失败: {}", e));
             }
         } else {
-            info!("使用串行转换处理 {} 个视频文件", files.len());
+            info!("使用串行转换处理 {} 个视频文件", total_files);
             if let Err(e) = self.task_processor.process_video_convert(files, output_dir) {
                 self.state.task_manager.fail_task(format!("启动视频转换任务失败: {}", e));
             }
         }
+    }
+
+    /// 计算文件平均大小
+    fn calculate_average_file_size(&self, files: &[std::path::PathBuf]) -> u64 {
+        if files.is_empty() {
+            return 0;
+        }
+        
+        let total_size: u64 = files.iter()
+            .filter_map(|path| std::fs::metadata(path).ok())
+            .map(|metadata| metadata.len())
+            .sum();
+            
+        total_size / files.len() as u64
     }
 
     /// 开始 FFmpeg 下载任务
@@ -450,6 +481,82 @@ impl ZeusMusicApp {
                                 error_count,
                                 total_duration.as_secs_f64(),
                                 results.iter().map(|r| format!("• {}", r)).collect::<Vec<_>>().join("\n")
+                            );
+                            self.state.video_convert_result = Some(result_message);
+                            self.state.show_video_convert_result = true;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    /// 处理分片转换进度更新
+    fn handle_chunk_progress_update(&mut self, update: crate::video_chunk_parallel_processor::ChunkProgressUpdate) {
+        use crate::video_chunk_parallel_processor::ChunkProgressUpdate;
+        
+        match update {
+            ChunkProgressUpdate::TaskStarted { task_id, input_path, chunk_count } => {
+                info!("分片转换任务开始: {} ({}), 分片数: {}", task_id, input_path.display(), chunk_count);
+                
+                // 更新任务管理器进度
+                if let Some(ref mut task) = self.state.task_manager.current_task {
+                    task.current_file = task_id + 1;
+                    task.current_filename = format!("{} ({}个分片)", input_path.display(), chunk_count);
+                    task.total_files = task.total_files; // 保持原有总数
+                }
+            }
+            ChunkProgressUpdate::ChunkStarted { task_id, chunk_index, chunk_path } => {
+                info!("分片转换开始: 任务{} 分片{} - {}", task_id, chunk_index, chunk_path.display());
+                
+                if let Some(ref mut task) = self.state.task_manager.current_task {
+                    task.current_filename = format!("分片 {}/{}: {}", 
+                        chunk_index + 1, 
+                        task.total_files, 
+                        chunk_path.file_name().unwrap_or_default().to_string_lossy()
+                    );
+                }
+            }
+            ChunkProgressUpdate::ChunkCompleted { task_id, chunk_index, success, error } => {
+                if success {
+                    info!("分片转换完成: 任务{} 分片{}", task_id, chunk_index);
+                } else {
+                    warn!("分片转换失败: 任务{} 分片{} - {}", task_id, chunk_index, error.as_deref().unwrap_or("未知错误"));
+                }
+            }
+            ChunkProgressUpdate::TaskCompleted { task_id, result } => {
+                info!("分片转换任务完成: {} - 成功: {}", task_id, result.result.success);
+                
+                // 更新进度
+                if let Some(ref mut task) = self.state.task_manager.current_task {
+                    task.current_file = task.current_file + 1;
+                    task.progress = task.current_file as f32 / task.total_files as f32;
+                    
+                    if result.result.success {
+                        task.current_filename = result.result.get_success_message();
+                    } else {
+                        task.current_filename = result.result.get_error_message();
+                    }
+                }
+            }
+            ChunkProgressUpdate::AllTasksCompleted { success_count, error_count, total_duration, results } => {
+                info!("所有分片转换任务完成: 成功={}, 失败={}, 耗时={:.2}秒", 
+                    success_count, error_count, total_duration.as_secs_f64());
+                
+                // 完成任务
+                self.state.task_manager.complete_task();
+                
+                // 根据任务类型处理结果
+                if let Some(ref task) = self.state.task_manager.task_history.last() {
+                    match task.task_type {
+                        crate::models::TaskType::VideoConvert => {
+                            let result_message = format!(
+                                "分片并行视频转换完成！\n\n成功: {}\n失败: {}\n总耗时: {:.2}秒\n\n详细结果:\n{}",
+                                success_count,
+                                error_count,
+                                total_duration.as_secs_f64(),
+                                results.iter().map(|r| format!("• {}", r.result.get_success_message())).collect::<Vec<_>>().join("\n")
                             );
                             self.state.video_convert_result = Some(result_message);
                             self.state.show_video_convert_result = true;

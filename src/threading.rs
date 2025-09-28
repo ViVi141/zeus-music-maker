@@ -10,6 +10,8 @@ use crate::audio_converter::AudioConverter;
 use crate::video_converter::VideoConverter;
 use crate::ffmpeg_downloader::FFmpegDownloader;
 use crate::parallel_converter::{ParallelConverter, ParallelConfig, ProgressUpdate};
+use crate::video_chunk_parallel_processor::{VideoChunkParallelProcessor, ChunkProgressUpdate};
+use crate::video_chunk_converter::VideoChunkConfig;
 
 /// 任务消息
 #[derive(Debug, Clone)]
@@ -37,6 +39,8 @@ pub enum TaskMessage {
     },
     /// 并行转换进度更新
     ParallelProgressUpdate(ProgressUpdate),
+    /// 分片转换进度更新
+    ChunkProgressUpdate(ChunkProgressUpdate),
 }
 
 /// 多线程任务处理器
@@ -410,6 +414,52 @@ impl ThreadedTaskProcessor {
         Ok(())
     }
     
+    /// 处理视频格式转换任务（分片并行版本）
+    pub fn process_video_convert_chunked(
+        &self,
+        files: Vec<PathBuf>,
+        output_dir: PathBuf,
+    ) -> Result<()> {
+        let progress_sender = self.progress_sender.clone();
+        let _cancel_flag = self.cancel_flag.clone();
+
+        // 创建分片配置
+        let chunk_config = VideoChunkConfig::default();
+        let chunk_processor = VideoChunkParallelProcessor::new(chunk_config);
+
+        thread::spawn(move || {
+            info!("开始分片并行视频转换: {} 个文件", files.len());
+
+            // 启动分片并行转换
+            if let Err(e) = chunk_processor.process_videos_parallel(files.clone(), output_dir, 5, 3) {
+                warn!("分片并行视频转换失败: {}", e);
+                let _ = progress_sender.send(TaskMessage::TaskCompleted {
+                    success_count: 0,
+                    error_count: files.len(),
+                    results: vec![format!("分片并行视频转换失败: {}", e)],
+                });
+                return;
+            }
+
+            // 监听分片转换进度
+            Self::monitor_chunk_progress(chunk_processor, progress_sender);
+        });
+
+        Ok(())
+    }
+
+    /// 监听分片转换进度
+    fn monitor_chunk_progress(
+        chunk_processor: VideoChunkParallelProcessor,
+        progress_sender: Sender<TaskMessage>,
+    ) {
+        let receiver = chunk_processor.get_progress_receiver();
+        
+        while let Ok(update) = receiver.recv() {
+            let _ = progress_sender.send(TaskMessage::ChunkProgressUpdate(update));
+        }
+    }
+
     /// 处理视频格式转换任务（串行版本，保持向后兼容）
     pub fn process_video_convert(
         &self,

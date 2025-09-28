@@ -82,6 +82,9 @@ pinyin = "0.10"
 # CPU information for optimal thread count
 num_cpus = "1.0"
 
+# Parallel processing for video chunk conversion
+rayon = "1.10"
+
 # Windows DLL support
 [target.'cfg(windows)'.dependencies]
 libc = "0.2"
