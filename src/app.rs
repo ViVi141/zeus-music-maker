@@ -19,11 +19,27 @@ pub struct ZeusMusicApp {
 impl ZeusMusicApp {
     pub fn new() -> Self {
         info!("初始化Zeus Music Mod Generator");
-        Self {
-            state: AppState::default(),
+        
+        // 从配置文件加载状态
+        let state = AppState::load_config();
+        
+        let mut app = Self {
+            state,
             task_processor: ThreadedTaskProcessor::new(),
             lifecycle: lifecycle::AppLifecycle::new(),
+        };
+        
+        // 首次启动时自动显示用户指导
+        if app.state.is_first_launch {
+            app.state.show_user_guide = true;
+            app.state.is_first_launch = false;
+            info!("首次启动，显示新用户指导");
+        } else if app.state.auto_show_guide {
+            app.state.show_user_guide = true;
+            info!("自动显示用户指导");
         }
+        
+        app
     }
 }
 
@@ -72,6 +88,7 @@ impl eframe::App for ZeusMusicApp {
         UIComponents::show_export_dialog(ctx, &mut self.state);
         let uptime = self.get_uptime();
         UIComponents::show_about_dialog(ctx, &mut self.state, uptime);
+        UIComponents::show_user_guide_dialog(ctx, &mut self.state);
         UIComponents::show_track_editor_dialog(ctx, &mut self.state);
         UIComponents::show_paa_converter_dialog(ctx, &mut self.state, Some(&mut self.task_processor));
         UIComponents::show_preview_dialog(ctx, &mut self.state);
@@ -140,22 +157,27 @@ impl eframe::App for ZeusMusicApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         info!("程序开始优雅关闭...");
         
-        // 1. 取消所有正在运行的任务
+        // 1. 保存配置文件
+        if let Err(e) = self.state.save_config() {
+            warn!("保存配置文件失败: {}", e);
+        }
+        
+        // 2. 取消所有正在运行的任务
         self.task_processor.cancel_task();
         
-        // 2. 等待任务完成（最多等待5秒）
+        // 3. 等待任务完成（最多等待5秒）
         if !self.task_processor.wait_for_completion(5000) {
             warn!("任务未在超时时间内完成，继续关闭");
         }
         
-        // 3. 清理资源
+        // 4. 清理资源
         self.cleanup_resources();
         
-        // 4. 记录运行时间
+        // 5. 记录运行时间
         let uptime = self.lifecycle.get_uptime();
         info!("应用程序已关闭，运行时间: {:.2}秒", uptime.as_secs_f64());
         
-        // 5. 正常退出
+        // 6. 正常退出
         std::process::exit(0);
     }
 }

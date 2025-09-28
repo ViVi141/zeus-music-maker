@@ -93,19 +93,25 @@ impl UIComponents {
         let screen_size = ctx.available_rect().size();
         let mut pos = preferred_pos;
         
-        // 确保窗口不超出右边界
-        if pos.x + window_size.x > screen_size.x {
-            pos.x = (screen_size.x - window_size.x).max(0.0);
+        // 如果窗口太大，尝试居中显示
+        if window_size.x > screen_size.x * 0.9 || window_size.y > screen_size.y * 0.9 {
+            pos.x = (screen_size.x - window_size.x).max(0.0) / 2.0;
+            pos.y = (screen_size.y - window_size.y).max(0.0) / 2.0;
+        } else {
+            // 确保窗口不超出右边界
+            if pos.x + window_size.x > screen_size.x {
+                pos.x = (screen_size.x - window_size.x).max(0.0);
+            }
+            
+            // 确保窗口不超出下边界
+            if pos.y + window_size.y > screen_size.y {
+                pos.y = (screen_size.y - window_size.y).max(0.0);
+            }
+            
+            // 确保窗口不超出左边界和上边界
+            pos.x = pos.x.max(0.0);
+            pos.y = pos.y.max(0.0);
         }
-        
-        // 确保窗口不超出下边界
-        if pos.y + window_size.y > screen_size.y {
-            pos.y = (screen_size.y - window_size.y).max(0.0);
-        }
-        
-        // 确保窗口不超出左边界和上边界
-        pos.x = pos.x.max(0.0);
-        pos.y = pos.y.max(0.0);
         
         pos
     }
@@ -139,16 +145,38 @@ impl UIComponents {
             });
 
             ui.menu_button("工具", |ui| {
-                ui.menu_button("模组类型", |ui| {
-                    if ui.radio_value(&mut state.project.mod_type, crate::models::ModType::Music, "音乐模组").clicked() {
-                        ui.close_menu();
-                    }
-                    if ui.radio_value(&mut state.project.mod_type, crate::models::ModType::Video, "视频模组").clicked() {
-                        ui.close_menu();
-                    }
-                    if ui.radio_value(&mut state.project.mod_type, crate::models::ModType::Combined, "组合模组").clicked() {
-                        ui.close_menu();
-                    }
+                // 模组类型选择 - 使用垂直布局，更清晰
+                ui.vertical(|ui| {
+                    ui.label("模组类型:");
+                    ui.add_space(5.0);
+                    
+                    // 保存当前模组类型
+                    let old_type = state.project.mod_type.clone();
+                    
+                    // 使用selectable_label创建单选按钮组
+                    ui.horizontal(|ui| {
+                        if ui.selectable_label(state.project.mod_type == crate::models::ModType::Music, "🎵 音乐模组").clicked() {
+                            if state.project.mod_type != crate::models::ModType::Music {
+                                state.project.mod_type = crate::models::ModType::Music;
+                                if old_type == crate::models::ModType::Video {
+                                    log::info!("从视频模组切换到音乐模组，更新默认名称");
+                                    state.project.set_default_name_for_mod_type();
+                                }
+                            }
+                        }
+                        
+                        ui.add_space(10.0);
+                        
+                        if ui.selectable_label(state.project.mod_type == crate::models::ModType::Video, "🎬 视频模组").clicked() {
+                            if state.project.mod_type != crate::models::ModType::Video {
+                                state.project.mod_type = crate::models::ModType::Video;
+                                if old_type == crate::models::ModType::Music {
+                                    log::info!("从音乐模组切换到视频模组，更新默认名称");
+                                    state.project.set_default_name_for_mod_type();
+                                }
+                            }
+                        }
+                    });
                 });
                 ui.separator();
                 if ui.button("构建插件...").clicked() {
@@ -196,7 +224,11 @@ impl UIComponents {
             });
 
             ui.menu_button("帮助", |ui| {
-                if ui.button("关于").clicked() {
+                if ui.button("📖 新用户指导").clicked() {
+                    state.show_user_guide = true;
+                    ui.close_menu();
+                }
+                if ui.button("ℹ️ 关于").clicked() {
                     state.show_about = true;
                     ui.close_menu();
                 }
@@ -218,21 +250,6 @@ impl UIComponents {
                         Self::render_music_tracks(ui, state, &mut selected_track);
                     }
                     crate::models::ModType::Video => {
-                        Self::render_video_files(ui, state, &mut selected_video);
-                    }
-                    crate::models::ModType::Combined => {
-                        ui.group(|ui| {
-                            ui.heading("音乐轨道");
-                            ui.add_space(5.0);
-                        });
-                        Self::render_music_tracks(ui, state, &mut selected_track);
-                        
-                        ui.add_space(10.0);
-                        
-                        ui.group(|ui| {
-                            ui.heading("视频文件");
-                            ui.add_space(5.0);
-                        });
                         Self::render_video_files(ui, state, &mut selected_video);
                     }
                 }
@@ -361,25 +378,6 @@ impl UIComponents {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("删除视频").clicked() {
                             state.remove_selected_video();
-                            state.file_operation_message = None; // 清除提示信息
-                        }
-                    });
-                }
-                crate::models::ModType::Combined => {
-                    if ui.button("添加OGG歌曲").clicked() {
-                        Self::add_audio_files(ui, state);
-                    }
-                    if ui.button("添加视频文件").clicked() {
-                        Self::add_video_files(ui, state);
-                    }
-                    
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("删除选中").clicked() {
-                            if state.selected_track.is_some() {
-                                state.remove_selected_track();
-                            } else if state.selected_video.is_some() {
-                                state.remove_selected_video();
-                            }
                             state.file_operation_message = None; // 清除提示信息
                         }
                     });
@@ -561,8 +559,8 @@ impl UIComponents {
             .open(&mut state.show_export_dialog)
             .resizable(true)
             .default_size(window_size)
-            .min_size([500.0, 400.0])
-            .max_size([900.0, 700.0])
+            .min_size([500.0, 350.0])
+            .max_size([1000.0, 800.0])
             .default_pos(safe_pos)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
@@ -989,9 +987,10 @@ impl UIComponents {
             .open(&mut state.show_paa_converter)
             .resizable(true)
             .default_size(window_size)
-            .min_size([700.0, 500.0])
-            .max_size([1200.0, 900.0])
+            .min_size([600.0, 400.0])
+            .max_size([1400.0, 1000.0])
             .default_pos(safe_pos)
+            .constrain(true)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.heading("图片转PAA格式转换");
@@ -1207,8 +1206,8 @@ impl UIComponents {
             .open(&mut state.show_paa_preview)
             .resizable(true)
             .default_size(window_size)
-            .min_size([800.0, 600.0])
-            .max_size([1400.0, 1000.0])
+            .min_size([600.0, 400.0])
+            .max_size([1600.0, 1200.0])
             .default_pos(safe_pos)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
@@ -2887,5 +2886,140 @@ impl UIComponents {
             state.show_ffmpeg_plugin = false;
         }
     }
+
+    /// 显示新用户指导对话框
+    pub fn show_user_guide_dialog(ctx: &egui::Context, state: &mut AppState) {
+        if !state.show_user_guide {
+            return;
+        }
+
+        let mut should_close = false;
+
+        let window_size = egui::Vec2::new(600.0, 500.0);
+        let safe_pos = Self::calculate_safe_position(ctx, window_size, egui::Pos2::new(100.0, 100.0));
+        
+        egui::Window::new("📖 新用户使用指导")
+            .open(&mut state.show_user_guide)
+            .resizable(true)
+            .default_size(window_size)
+            .min_size([500.0, 350.0])
+            .max_size([1000.0, 800.0])
+            .default_pos(safe_pos)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(ui.available_height())
+                    .show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            // 欢迎信息
+                            ui.group(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.heading("🎵 欢迎使用宙斯音乐制作器！");
+                                    ui.add_space(5.0);
+                                    ui.label("这是一个专为Arma 3游戏设计的音乐模组制作工具，让您轻松创建专业的音乐模组。");
+                                });
+                            });
+
+                            ui.add_space(10.0);
+
+                            // 快速开始指南
+                            ui.group(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.heading("🚀 快速开始");
+                                    ui.add_space(5.0);
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label("1️⃣");
+                                        ui.label("选择模组类型：音乐模组 🎵 或 视频模组 🎬");
+                                    });
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label("2️⃣");
+                                        ui.label("添加媒体文件：点击底部按钮选择OGG音频或视频文件");
+                                    });
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label("3️⃣");
+                                        ui.label("配置项目：点击'文件' → '项目设置'修改模组信息");
+                                    });
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label("4️⃣");
+                                        ui.label("导出模组：点击'导出' → '导出模组'生成Arma 3模组");
+                                    });
+                                });
+                            });
+
+                            ui.add_space(10.0);
+
+                            // 主要功能说明
+                            ui.group(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.heading("🛠️ 主要功能");
+                                            ui.add_space(5.0);
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label("🔓");
+                                        ui.label("音频解密：支持酷狗KGM和网易云NCM格式解密");
+                                    });
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label("🔄");
+                                        ui.label("格式转换：自动下载FFmpeg，支持多种音频/视频格式转换");
+                                    });
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label("🖼️");
+                                        ui.label("PAA转换：将图片转换为Arma 3专用的PAA格式");
+                                    });
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label("📦");
+                                        ui.label("模组生成：自动生成完整的Arma 3模组文件结构");
+                                    });
+                                });
+                            });
+
+                            ui.add_space(10.0);
+
+                            // 使用技巧
+                            ui.group(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.heading("💡 使用技巧");
+                                    ui.add_space(5.0);
+                                    
+                                    ui.label("• 首次使用建议先尝试音频解密功能");
+                                    ui.label("• 确保音频文件为OGG格式，视频文件为MP4格式");
+                                    ui.label("• 可以批量添加文件，支持拖拽操作");
+                                    ui.label("• 导出前记得检查模组名称和作者信息");
+                                    ui.label("• 遇到问题可以查看控制台日志获取详细信息");
+                                });
+                            });
+
+                            ui.add_space(15.0);
+
+                            // 不再显示选项
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut state.auto_show_guide, "下次启动时自动显示此指导");
+                            });
+
+                            ui.add_space(10.0);
+
+                            // 底部按钮
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("开始使用").clicked() {
+                                    should_close = true;
+                                }
+                                ui.add_space(10.0);
+                                if ui.button("关闭").clicked() {
+                                    should_close = true;
+                                }
+                            });
+                        });
+                    });
+                });
+        
+        if should_close {
+            state.show_user_guide = false;
+        }
+    }
 }
-             

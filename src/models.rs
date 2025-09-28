@@ -78,7 +78,6 @@ impl Track {
 pub enum ModType {
     Music,
     Video,
-    Combined,
 }
 
 /// 视频文件数据模型
@@ -180,6 +179,23 @@ impl ProjectSettings {
             .collect::<String>();
     }
 
+    /// 根据模组类型设置默认名称
+    pub fn set_default_name_for_mod_type(&mut self) {
+        log::info!("设置默认名称，当前模组类型: {:?}", self.mod_type);
+        match self.mod_type {
+            ModType::Music => {
+                self.mod_name = "New Music Mod".to_string();
+                self.class_name = "MyMusicClass".to_string();
+                log::info!("设置为音乐模组: {} / {}", self.mod_name, self.class_name);
+            }
+            ModType::Video => {
+                self.mod_name = "New Video Mod".to_string();
+                self.class_name = "MyVideoClass".to_string();
+                log::info!("设置为视频模组: {} / {}", self.mod_name, self.class_name);
+            }
+        }
+    }
+
     /// 获取模组名称（无空格，用于文件夹名）
     pub fn mod_name_no_spaces(&self) -> String {
         let result: String = self.mod_name
@@ -192,7 +208,11 @@ impl ProjectSettings {
             .collect();
         
         if result.is_empty() || result.chars().all(|c| c == '_') {
-            "NewMusicMod".to_string()
+            // 根据模组类型返回不同的默认名称
+            match self.mod_type {
+                ModType::Music => "NewMusicMod".to_string(),
+                ModType::Video => "NewVideoMod".to_string(),
+            }
         } else {
             result
         }
@@ -420,6 +440,14 @@ pub struct AppState {
     pub show_export_dialog: bool,
     /// 是否显示关于对话框
     pub show_about: bool,
+    /// 是否显示新用户指导对话框
+    pub show_user_guide: bool,
+    /// 是否首次启动（用于自动显示指导）
+    pub is_first_launch: bool,
+    /// 配置文件路径（用于持久化设置）
+    pub config_file_path: Option<PathBuf>,
+    /// 是否在启动时自动显示用户指导
+    pub auto_show_guide: bool,
     /// 是否显示轨道编辑器
     pub show_track_editor: bool,
     /// 是否显示PAA转换对话框
@@ -512,6 +540,66 @@ pub struct AppState {
 
 
 impl AppState {
+    /// 获取配置文件路径
+    pub fn get_config_path() -> PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| std::env::current_dir().unwrap())
+            .join("ZeusMusicMaker")
+            .join("config.json")
+    }
+
+    /// 加载配置文件
+    pub fn load_config() -> Self {
+        let config_path = Self::get_config_path();
+        
+        // 如果配置文件不存在，返回默认配置
+        if !config_path.exists() {
+            let mut state = Self::default();
+            state.config_file_path = Some(config_path);
+            return state;
+        }
+
+        // 尝试加载配置文件
+        match std::fs::read_to_string(&config_path) {
+            Ok(content) => {
+                match serde_json::from_str::<Self>(&content) {
+                    Ok(mut state) => {
+                        state.config_file_path = Some(config_path);
+                        state.is_first_launch = false; // 配置文件存在，不是首次启动
+                        state
+                    }
+                    Err(e) => {
+                        log::warn!("配置文件解析失败: {}, 使用默认配置", e);
+                        let mut state = Self::default();
+                        state.config_file_path = Some(config_path);
+                        state
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("读取配置文件失败: {}, 使用默认配置", e);
+                let mut state = Self::default();
+                state.config_file_path = Some(config_path);
+                state
+            }
+        }
+    }
+
+    /// 保存配置文件
+    pub fn save_config(&self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(config_path) = &self.config_file_path {
+            // 确保配置目录存在
+            if let Some(parent) = config_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+
+            // 序列化并保存
+            let content = serde_json::to_string_pretty(self)?;
+            std::fs::write(config_path, content)?;
+            log::info!("配置文件已保存: {:?}", config_path);
+        }
+        Ok(())
+    }
 
     /// 防重复添加轨道（基于文件路径）
     pub fn add_track_with_duplicate_check(&mut self, track: Track) -> bool {
@@ -660,6 +748,10 @@ impl Default for AppState {
             show_project_settings: false,
             show_export_dialog: false,
             show_about: false,
+            show_user_guide: false,
+            is_first_launch: true,
+            config_file_path: None,
+            auto_show_guide: true,
             show_track_editor: false,
             paa_selected_files: Vec::new(),
             paa_output_directory: None,
