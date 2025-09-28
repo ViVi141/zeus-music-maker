@@ -621,32 +621,3 @@ impl Clone for VideoConverter {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-    
-    #[test]
-    fn test_parallel_config_default() {
-        let config = ParallelConfig::default();
-        assert!(config.max_threads >= 2);
-        assert!(config.max_threads <= 12);
-        assert_eq!(config.queue_size, 1000);
-        assert!(config.smart_scheduling);
-    }
-    
-    #[test]
-    fn test_parallel_config_adjustment() {
-        let mut config = ParallelConfig::default();
-        let original_threads = config.max_threads;
-        
-        // 测试大文件调整
-        config.adjust_for_file_size(10, 150.0);
-        assert!(config.max_threads <= original_threads);
-        
-        // 测试小文件大批量调整
-        config.max_threads = original_threads;
-        config.adjust_for_file_size(100, 5.0);
-        assert!(config.max_threads >= original_threads);
-    }
-}

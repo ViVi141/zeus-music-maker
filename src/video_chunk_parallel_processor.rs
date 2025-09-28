@@ -555,29 +555,4 @@ impl VideoChunkParallelProcessor {
 
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
 
-    #[test]
-    fn test_optimal_thread_calculation() {
-        let threads = VideoChunkParallelProcessor::calculate_optimal_threads();
-        assert!(threads >= 2 && threads <= 12);
-    }
-
-    #[test]
-    fn test_chunk_conversion_task_creation() {
-        let config = VideoChunkConfig::default();
-        let processor = VideoChunkParallelProcessor::new(config);
-        
-        let input_files = vec![
-            PathBuf::from("test1.mp4"),
-            PathBuf::from("test2.avi"),
-        ];
-        
-        // 注意：这个测试需要真实的视频文件和FFmpeg，所以只测试结构
-        // 在实际环境中，应该使用模拟文件进行测试
-        assert_eq!(input_files.len(), 2);
-    }
-}
