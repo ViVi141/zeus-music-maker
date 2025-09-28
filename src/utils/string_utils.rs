@@ -9,7 +9,7 @@ use pinyin::ToPinyin;
 pub struct StringUtils;
 
 impl StringUtils {
-    /// 将中文字符串转换为拼音（罗马字母）
+    /// 将多语言字符串转换为拉丁字母（支持中文、日语、俄语、西班牙语）
     pub fn chinese_to_pinyin(input: &str) -> String {
         let mut result = String::with_capacity(input.len() * 2);
         
@@ -24,18 +24,36 @@ impl StringUtils {
                     _ => result.push('_'),
                 }
             } else if Self::is_chinese_char(c) {
-                // 只对中文字符尝试转换为拼音
+                // 中文字符转换为拼音
                 let pinyin_result = c.to_pinyin();
                 if let Some(pinyin) = pinyin_result {
-                    // 使用第一个拼音读音
                     result.push_str(&pinyin.plain());
                 } else {
-                    // 如果无法转换为拼音，使用Unicode码点
+                    result.push_str(&format!("u{:04x}", c as u32));
+                }
+            } else if Self::is_japanese_kana(c) {
+                // 日语假名转换为罗马字
+                if let Some(romaji) = Self::hiragana_to_romaji(c) {
+                    result.push_str(romaji);
+                } else {
+                    result.push_str(&format!("u{:04x}", c as u32));
+                }
+            } else if Self::is_russian_cyrillic(c) {
+                // 俄语西里尔字母转换为拉丁字母
+                if let Some(latin) = Self::cyrillic_to_latin(c) {
+                    result.push_str(latin);
+                } else {
                     result.push_str(&format!("u{:04x}", c as u32));
                 }
             } else {
-                // 对于其他非ASCII字符（如拉丁字母、数字等），保持原样
-                result.push(c);
+                // 处理西班牙语重音符号和其他字符
+                let normalized = Self::remove_spanish_accents(c);
+                if normalized != c {
+                    result.push(normalized);
+                } else {
+                    // 对于其他非ASCII字符，保持原样
+                    result.push(c);
+                }
             }
         }
         
@@ -53,6 +71,80 @@ impl StringUtils {
         (0x2B740..=0x2B81F).contains(&code) || // CJK扩展D
         (0x2B820..=0x2CEAF).contains(&code) || // CJK扩展E
         (0x2CEB0..=0x2EBEF).contains(&code)    // CJK扩展F
+    }
+
+    /// 判断字符是否为日文假名
+    fn is_japanese_kana(c: char) -> bool {
+        let code = c as u32;
+        // 平假名: 3040-309F, 片假名: 30A0-30FF
+        (0x3040..=0x309F).contains(&code) || (0x30A0..=0x30FF).contains(&code)
+    }
+
+
+    /// 判断字符是否为俄语西里尔字母
+    fn is_russian_cyrillic(c: char) -> bool {
+        let code = c as u32;
+        // 俄语西里尔字母: 0400-04FF
+        (0x0400..=0x04FF).contains(&code)
+    }
+
+    /// 简单的日语假名转罗马字（平假名）
+    fn hiragana_to_romaji(c: char) -> Option<&'static str> {
+        match c {
+            'あ' => Some("a"), 'い' => Some("i"), 'う' => Some("u"), 'え' => Some("e"), 'お' => Some("o"),
+            'か' => Some("ka"), 'き' => Some("ki"), 'く' => Some("ku"), 'け' => Some("ke"), 'こ' => Some("ko"),
+            'さ' => Some("sa"), 'し' => Some("shi"), 'す' => Some("su"), 'せ' => Some("se"), 'そ' => Some("so"),
+            'た' => Some("ta"), 'ち' => Some("chi"), 'つ' => Some("tsu"), 'て' => Some("te"), 'と' => Some("to"),
+            'な' => Some("na"), 'に' => Some("ni"), 'ぬ' => Some("nu"), 'ね' => Some("ne"), 'の' => Some("no"),
+            'は' => Some("ha"), 'ひ' => Some("hi"), 'ふ' => Some("fu"), 'へ' => Some("he"), 'ほ' => Some("ho"),
+            'ま' => Some("ma"), 'み' => Some("mi"), 'む' => Some("mu"), 'め' => Some("me"), 'も' => Some("mo"),
+            'や' => Some("ya"), 'ゆ' => Some("yu"), 'よ' => Some("yo"),
+            'ら' => Some("ra"), 'り' => Some("ri"), 'る' => Some("ru"), 'れ' => Some("re"), 'ろ' => Some("ro"),
+            'わ' => Some("wa"), 'を' => Some("wo"), 'ん' => Some("n"),
+            _ => None,
+        }
+    }
+
+    /// 简单的俄语西里尔字母转拉丁字母
+    fn cyrillic_to_latin(c: char) -> Option<&'static str> {
+        match c {
+            'А' => Some("A"), 'Б' => Some("B"), 'В' => Some("V"), 'Г' => Some("G"), 'Д' => Some("D"),
+            'Е' => Some("E"), 'Ё' => Some("Yo"), 'Ж' => Some("Zh"), 'З' => Some("Z"), 'И' => Some("I"),
+            'Й' => Some("Y"), 'К' => Some("K"), 'Л' => Some("L"), 'М' => Some("M"), 'Н' => Some("N"),
+            'О' => Some("O"), 'П' => Some("P"), 'Р' => Some("R"), 'С' => Some("S"), 'Т' => Some("T"),
+            'У' => Some("U"), 'Ф' => Some("F"), 'Х' => Some("Kh"), 'Ц' => Some("Ts"), 'Ч' => Some("Ch"),
+            'Ш' => Some("Sh"), 'Щ' => Some("Shch"), 'Ъ' => Some(""), 'Ы' => Some("Y"), 'Ь' => Some(""),
+            'Э' => Some("E"), 'Ю' => Some("Yu"), 'Я' => Some("Ya"),
+            'а' => Some("a"), 'б' => Some("b"), 'в' => Some("v"), 'г' => Some("g"), 'д' => Some("d"),
+            'е' => Some("e"), 'ё' => Some("yo"), 'ж' => Some("zh"), 'з' => Some("z"), 'и' => Some("i"),
+            'й' => Some("y"), 'к' => Some("k"), 'л' => Some("l"), 'м' => Some("m"), 'н' => Some("n"),
+            'о' => Some("o"), 'п' => Some("p"), 'р' => Some("r"), 'с' => Some("s"), 'т' => Some("t"),
+            'у' => Some("u"), 'ф' => Some("f"), 'х' => Some("kh"), 'ц' => Some("ts"), 'ч' => Some("ch"),
+            'ш' => Some("sh"), 'щ' => Some("shch"), 'ъ' => Some(""), 'ы' => Some("y"), 'ь' => Some(""),
+            'э' => Some("e"), 'ю' => Some("yu"), 'я' => Some("ya"),
+            _ => None,
+        }
+    }
+
+    /// 去除西班牙语重音符号
+    fn remove_spanish_accents(c: char) -> char {
+        match c {
+            'á' | 'à' | 'ä' | 'â' => 'a',
+            'é' | 'è' | 'ë' | 'ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' => 'u',
+            'ñ' => 'n',
+            'ç' => 'c',
+            'Á' | 'À' | 'Ä' | 'Â' => 'A',
+            'É' | 'È' | 'Ë' | 'Ê' => 'E',
+            'Í' | 'Ì' | 'Ï' | 'Î' => 'I',
+            'Ó' | 'Ò' | 'Ö' | 'Ô' => 'O',
+            'Ú' | 'Ù' | 'Ü' | 'Û' => 'U',
+            'Ñ' => 'N',
+            'Ç' => 'C',
+            _ => c,
+        }
     }
 
     /// 将字符串转换为ASCII安全格式（拼音风格）
@@ -161,5 +253,24 @@ mod tests {
         // 测试纯中文
         assert_eq!(StringUtils::chinese_to_pinyin("音乐"), "yinyue");
         assert_eq!(StringUtils::chinese_to_pinyin("歌曲"), "gequ");
+    }
+
+    #[test]
+    fn test_multilingual_support() {
+        // 测试日语假名
+        assert_eq!(StringUtils::chinese_to_pinyin("こんにちは"), "konnichiwa");
+        assert_eq!(StringUtils::chinese_to_pinyin("ありがとう"), "arigatou");
+        
+        // 测试俄语
+        assert_eq!(StringUtils::chinese_to_pinyin("Привет"), "Privet");
+        assert_eq!(StringUtils::chinese_to_pinyin("Москва"), "Moskva");
+        
+        // 测试西班牙语重音符号
+        assert_eq!(StringUtils::chinese_to_pinyin("España"), "Espana");
+        assert_eq!(StringUtils::chinese_to_pinyin("niño"), "nino");
+        
+        // 测试混合语言
+        assert_eq!(StringUtils::chinese_to_pinyin("音乐こんにちはMusic"), "yinyuekonnichiwaMusic");
+        assert_eq!(StringUtils::chinese_to_pinyin("Привет音乐"), "Privetyinyue");
     }
 }
