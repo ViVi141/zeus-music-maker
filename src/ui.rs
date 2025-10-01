@@ -477,14 +477,14 @@ impl UIComponents {
         let mut should_close = false;
         let mut should_save = false;
 
-        let window_size = egui::Vec2::new(500.0, 400.0);
+        let window_size = egui::Vec2::new(500.0, 450.0);
         let safe_pos = Self::calculate_safe_position(ctx, window_size, egui::Pos2::new(100.0, 100.0));
         
         egui::Window::new("项目设置")
             .open(&mut state.show_project_settings)
             .resizable(true)
             .default_size(window_size)
-            .min_size([400.0, 300.0])
+            .min_size([400.0, 350.0])
             .max_size([800.0, 600.0])
             .default_pos(safe_pos)
             .show(ctx, |ui| {
@@ -495,9 +495,29 @@ impl UIComponents {
                             ui.heading("基本信息");
                             ui.add_space(5.0);
                             
+                            // 模组名称输入
                             ui.horizontal(|ui| {
                                 ui.label("模组名称:");
-                                ui.text_edit_singleline(&mut state.project.mod_name);
+                                let response = ui.text_edit_singleline(&mut state.project.mod_name);
+                                
+                                // 检测输入变化并自动过滤非英文字符
+                                if response.changed() {
+                                    use crate::utils::string_utils::StringUtils;
+                                    let filtered = StringUtils::filter_to_english_only(&state.project.mod_name);
+                                    if filtered != state.project.mod_name {
+                                        state.project.mod_name = filtered;
+                                    }
+                                }
+                            });
+                            
+                            // 显示提示信息
+                            ui.horizontal(|ui| {
+                                ui.add_space(80.0); // 对齐到"模组名称:"之后
+                                ui.label(
+                                    egui::RichText::new("仅允许英文、数字、空格和 - _ . 符号")
+                                        .small()
+                                        .color(egui::Color32::from_rgb(100, 100, 100))
+                                );
                             });
                             
                             ui.add_space(8.0);
@@ -534,16 +554,37 @@ impl UIComponents {
                     
                     ui.add_space(15.0);
                     
+                    // 验证提示信息
+                    use crate::utils::string_utils::StringUtils;
+                    let is_valid = StringUtils::is_english_only(&state.project.mod_name);
+                    if !is_valid {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("⚠ 模组名称必须只包含英文字符")
+                                    .color(egui::Color32::from_rgb(220, 50, 50))
+                            );
+                        });
+                        ui.add_space(5.0);
+                    }
+                    
                     // 按钮区域
                     ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("取消").clicked() {
                                 should_close = true;
                             }
-                            if ui.button("确定").clicked() {
+                            
+                            // 只有当模组名称有效时才允许确定
+                            let confirm_button = ui.add_enabled(is_valid, egui::Button::new("确定"));
+                            if confirm_button.clicked() {
                                 state.project.update_class_name();
                                 should_save = true;
                                 should_close = true;
+                            }
+                            
+                            // 鼠标悬停提示
+                            if !is_valid {
+                                confirm_button.on_hover_text("请先输入有效的英文模组名称");
                             }
                         });
                     });

@@ -280,4 +280,34 @@ impl StringUtils {
         result.push_str(&safe_track_name);
         result
     }
+
+    /// 检查字符串是否只包含英文字符、数字、空格和常用符号
+    pub fn is_english_only(input: &str) -> bool {
+        if input.is_empty() {
+            return false;
+        }
+        
+        // 允许：英文字母、数字、空格、连字符、下划线、点号
+        input.chars().all(|c| {
+            c.is_ascii_alphanumeric() || 
+            c == ' ' || 
+            c == '-' || 
+            c == '_' || 
+            c == '.'
+        })
+    }
+
+    /// 过滤掉非英文字符，只保留英文字符、数字、空格和常用符号
+    pub fn filter_to_english_only(input: &str) -> String {
+        input
+            .chars()
+            .filter(|c| {
+                c.is_ascii_alphanumeric() || 
+                *c == ' ' || 
+                *c == '-' || 
+                *c == '_' || 
+                *c == '.'
+            })
+            .collect()
+    }
 }
