@@ -5,7 +5,7 @@
 ![Version](https://img.shields.io/badge/version-v2.0.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 ![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)
-![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-green.svg)
+![License](https://img.shields.io/badge/license-AGPL3.0-yellow.svg)
 
 **专为 Arma 3 设计的专业音乐/视频模组制作工具**
 
@@ -266,7 +266,7 @@ cargo bench
 
 ## 📄 许可证
 
-本项目基于 [CC-BY-SA-4.0 许可证](LICENSE) 开源。
+本项目基于[AGPL-3.0 license许可证](LICENSE) 开源。
 
 ## 📞 联系方式
 
