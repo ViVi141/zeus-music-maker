@@ -719,8 +719,12 @@ impl AppState {
         if let Some(config_dir) = dirs::config_dir() {
             config_dir.join("zeus-music-maker").join("config.json")
         } else {
-            // 备用路径
-            std::env::current_dir().unwrap().join("config.json")
+            // 备用路径：尝试获取当前目录，失败则使用临时目录
+            std::env::current_dir()
+                .map(|dir| dir.join("config.json"))
+                .unwrap_or_else(|_| {
+                    std::env::temp_dir().join("zeus-music-maker-config.json")
+                })
         }
     }
     

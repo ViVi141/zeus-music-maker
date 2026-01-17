@@ -15,8 +15,8 @@ fn main() {
         res.set("FileDescription", "Zeus Music Maker - Arma 3 Music/Video Mod Creator");
         res.set("CompanyName", "ViVi141");
         res.set("LegalCopyright", "Copyright (C) 2025 ViVi141");
-        res.set("ProductVersion", "2.0.0.0");
-        res.set("FileVersion", "2.0.0.0");
+        res.set("ProductVersion", "2.1.0.0");
+        res.set("FileVersion", "2.1.0.0");
         
         // 设置应用程序类型为Windows GUI应用（无控制台窗口）
         res.set("ApplicationManifest", "app.manifest");

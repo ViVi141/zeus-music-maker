@@ -266,7 +266,12 @@ impl ParallelConverter {
                 format!("audio{:03}.ogg", i)
             };
             
-            let output_path = output_dir.join(output_filename);
+            let mut output_path = output_dir.join(output_filename);
+            // 确保路径长度在限制内
+            output_path = crate::utils::string_utils::StringUtils::ensure_path_length(&output_path, 260)
+                .unwrap_or_else(|_| output_path.clone());
+            // 确保文件名唯一
+            output_path = crate::utils::string_utils::StringUtils::ensure_unique_path(output_path);
             
             tasks.push(ConversionTask::Audio {
                 input_path: input_path.clone(),
@@ -300,7 +305,12 @@ impl ParallelConverter {
                 format!("video{:03}.ogv", i)
             };
             
-            let output_path = output_dir.join(output_filename);
+            let mut output_path = output_dir.join(output_filename);
+            // 确保路径长度在限制内
+            output_path = crate::utils::string_utils::StringUtils::ensure_path_length(&output_path, 260)
+                .unwrap_or_else(|_| output_path.clone());
+            // 确保文件名唯一
+            output_path = crate::utils::string_utils::StringUtils::ensure_unique_path(output_path);
             
             tasks.push(ConversionTask::Video {
                 input_path: input_path.clone(),
@@ -381,7 +391,10 @@ impl ParallelConverter {
             }
             
             // 发送完成消息
-            let final_stats = stats.lock().unwrap();
+            let final_stats = stats.lock().unwrap_or_else(|e| {
+                warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
+                e.into_inner()
+            });
             let total_duration = final_stats.start_time
                 .map(|start| start.elapsed())
                 .unwrap_or_default();
@@ -457,7 +470,10 @@ impl ParallelConverter {
                 .to_string_lossy()
                 .to_string();
             
-            let total_tasks = stats.lock().unwrap().total_tasks;
+            let total_tasks = stats.lock().unwrap_or_else(|e| {
+                warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
+                e.into_inner()
+            }).total_tasks;
             let _ = progress_sender.send(ProgressUpdate::TaskStarted {
                 task_id: task.task_id(),
                 filename: filename.clone(),
@@ -518,7 +534,10 @@ impl ParallelConverter {
             
             // 更新统计信息
             {
-                let mut stats_guard = stats.lock().unwrap();
+                let mut stats_guard = stats.lock().unwrap_or_else(|e| {
+                    warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
+                    e.into_inner()
+                });
                 stats_guard.completed_tasks += 1;
                 match &result {
                     ConversionResult::Success { .. } => {
@@ -531,7 +550,10 @@ impl ParallelConverter {
             }
             
             // 发送任务完成消息
-            let completed_count = stats.lock().unwrap().completed_tasks;
+            let completed_count = stats.lock().unwrap_or_else(|e| {
+                warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
+                e.into_inner()
+            }).completed_tasks;
             let _ = progress_sender.send(ProgressUpdate::TaskCompleted {
                 task_id: task.task_id(),
                 result: result.clone(),
@@ -555,7 +577,10 @@ impl ParallelConverter {
     
     /// 取消所有任务
     pub fn cancel_all_tasks(&self) {
-        *self.cancel_flag.lock().unwrap() = true;
+        *self.cancel_flag.lock().unwrap_or_else(|e| {
+            warn!("取消标志Mutex poisoned: {:?}，使用默认值", e);
+            e.into_inner()
+        }) = true;
         info!("并行转换任务取消信号已发送");
     }
     

@@ -102,9 +102,9 @@ echo - Ensure the program has read/write permissions
 echo - It is recommended to run the program from a non-system drive
 echo - To uninstall, simply delete the entire folder
 echo.
-echo Version: 2.0.0
+echo Version: 2.1.0
 echo Author: ViVi141
-echo License: CC-BY-SA-4.0
+echo License: AGPL-3.0
 ) > "%RELEASE_DIR%\README.txt"
 
 echo.

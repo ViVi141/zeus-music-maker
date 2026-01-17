@@ -45,6 +45,7 @@ impl EmbeddedResources {
 
     /// 提取库文件到临时目录
     pub fn extract_library_to_temp(&self, name: &str) -> Option<std::path::PathBuf> {
+        // 首先尝试从嵌入资源获取
         if let Some(data) = self.get_library(name) {
             let temp_dir = std::env::temp_dir();
             let temp_path = temp_dir.join(name);
@@ -53,6 +54,19 @@ impl EmbeddedResources {
                 return Some(temp_path);
             }
         }
+        
+        // 如果嵌入资源中没有，尝试从当前目录的 lib/ 文件夹加载
+        let lib_path = std::path::Path::new("lib").join(name);
+        if lib_path.exists() {
+            if let Ok(data) = std::fs::read(&lib_path) {
+                let temp_dir = std::env::temp_dir();
+                let temp_path = temp_dir.join(name);
+                if std::fs::write(&temp_path, data).is_ok() {
+                    return Some(temp_path);
+                }
+            }
+        }
+        
         None
     }
 

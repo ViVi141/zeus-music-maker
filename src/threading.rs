@@ -215,7 +215,17 @@ impl ThreadedTaskProcessor {
 
                 // 处理文件
                 if let Some(file_stem) = input_path.file_stem() {
-                    let output_path = output_dir.join(format!("{}.paa", file_stem.to_string_lossy()));
+                    // 使用安全文件名
+                    let safe_filename = crate::utils::string_utils::StringUtils::safe_filename_pinyin(
+                        &file_stem.to_string_lossy(),
+                        i
+                    );
+                    let mut output_path = output_dir.join(format!("{}.paa", safe_filename));
+                    // 确保路径长度在限制内
+                    output_path = crate::utils::string_utils::StringUtils::ensure_path_length(&output_path, 260)
+                        .unwrap_or_else(|_| output_path.clone());
+                    // 确保文件名唯一
+                    output_path = crate::utils::string_utils::StringUtils::ensure_unique_path(output_path);
                     
                     match PaaConverter::convert_image_to_paa_with_crop(
                         input_path, 
@@ -287,11 +297,8 @@ impl ThreadedTaskProcessor {
         let cancel_flag = self.cancel_flag.clone();
 
         thread::spawn(move || {
-            // 使用多线程运行时以提高并发性能
-            let _rt = tokio::runtime::Runtime::new().unwrap_or_else(|e| {
-                warn!("创建Tokio运行时失败: {}", e);
-                panic!("无法创建Tokio运行时");
-            });
+            // 注意：音频转换不使用 Tokio，所以不需要创建运行时
+            // 如果将来需要使用异步功能，再添加运行时
             let mut success_count = 0;
             let mut error_count = 0;
             let mut results = Vec::new();
@@ -346,7 +353,12 @@ impl ThreadedTaskProcessor {
                         &file_stem.to_string_lossy(), 
                         i
                     );
-                    let output_path = output_dir.join(format!("{}.ogg", pinyin_filename));
+                    let mut output_path = output_dir.join(format!("{}.ogg", pinyin_filename));
+                    // 确保路径长度在限制内
+                    output_path = crate::utils::string_utils::StringUtils::ensure_path_length(&output_path, 260)
+                        .unwrap_or_else(|_| output_path.clone());
+                    // 确保文件名唯一
+                    output_path = crate::utils::string_utils::StringUtils::ensure_unique_path(output_path);
                     
                     // 执行转换
                     let cancel_check = || *cancel_flag.lock().unwrap_or_else(|_| {
@@ -470,11 +482,8 @@ impl ThreadedTaskProcessor {
         let cancel_flag = self.cancel_flag.clone();
 
         thread::spawn(move || {
-            // 使用多线程运行时以提高并发性能
-            let _rt = tokio::runtime::Runtime::new().unwrap_or_else(|e| {
-                warn!("创建Tokio运行时失败: {}", e);
-                panic!("无法创建Tokio运行时");
-            });
+            // 注意：视频转换不使用 Tokio，所以不需要创建运行时
+            // 如果将来需要使用异步功能，再添加运行时
             let mut success_count = 0;
             let mut error_count = 0;
             let mut results = Vec::new();
@@ -532,7 +541,12 @@ impl ThreadedTaskProcessor {
                     format!("video{:03}", i)
                 };
                 let output_filename = pinyin_filename + ".ogv";
-                let output_path = output_dir.join(output_filename);
+                let mut output_path = output_dir.join(output_filename);
+                // 确保路径长度在限制内
+                output_path = crate::utils::string_utils::StringUtils::ensure_path_length(&output_path, 260)
+                    .unwrap_or_else(|_| output_path.clone());
+                // 确保文件名唯一
+                output_path = crate::utils::string_utils::StringUtils::ensure_unique_path(output_path);
 
                 // 执行视频转换
                 match converter.convert_to_ogv(input_path, &output_path) {
@@ -578,7 +592,16 @@ impl ThreadedTaskProcessor {
         let cancel_flag = self.cancel_flag.clone();
 
         thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = progress_sender.send(TaskMessage::FFmpegDownloadCompleted {
+                        success: false,
+                        message: format!("创建Tokio运行时失败: {}", e),
+                    });
+                    return;
+                }
+            };
             
             // 发送初始进度
             let _ = progress_sender.send(TaskMessage::FFmpegDownloadProgress {
@@ -652,6 +675,9 @@ impl ThreadedTaskProcessor {
                     });
                 }
             }
+            
+            // 显式关闭 Tokio 运行时
+            rt.shutdown_timeout(std::time::Duration::from_millis(100));
         });
 
         Ok(())
@@ -719,26 +745,44 @@ impl ThreadedTaskProcessor {
         let timeout = std::time::Duration::from_millis(timeout_ms);
         
         // 快速检查是否有任务在运行
+        // 由于我们无法直接检测线程状态，只能通过通道消息来判断
+        // 但这种方法不够可靠，所以使用更短的超时时间
         let mut consecutive_empty_checks = 0;
-        const MAX_EMPTY_CHECKS: u32 = 3; // 连续3次没有消息就认为完成
+        const MAX_EMPTY_CHECKS: u32 = 5; // 增加检查次数，但减少每次等待时间
         
         while start_time.elapsed() < timeout {
-            if let Ok(_) = self.progress_receiver.try_recv() {
-                // 还有消息在处理
+            // 尝试接收所有待处理的消息
+            let mut has_message = false;
+            while let Ok(_) = self.progress_receiver.try_recv() {
+                has_message = true;
                 consecutive_empty_checks = 0;
-                std::thread::sleep(std::time::Duration::from_millis(1)); // 更短的等待时间
+            }
+            
+            if has_message {
+                // 有消息，继续等待
+                std::thread::sleep(std::time::Duration::from_millis(10));
             } else {
                 // 没有更多消息
                 consecutive_empty_checks += 1;
                 if consecutive_empty_checks >= MAX_EMPTY_CHECKS {
-                    // 连续多次没有消息，认为任务已完成
+                    // 连续多次没有消息，认为任务已完成或已取消
+                    info!("等待任务完成：连续{}次检查无消息，认为已完成", MAX_EMPTY_CHECKS);
                     break;
                 }
-                std::thread::sleep(std::time::Duration::from_millis(1));
+                // 使用指数退避，减少CPU占用
+                let sleep_time = (consecutive_empty_checks as u64 * 10).min(50);
+                std::thread::sleep(std::time::Duration::from_millis(sleep_time));
             }
         }
         
-        start_time.elapsed() < timeout
+        let elapsed = start_time.elapsed();
+        if elapsed >= timeout {
+            warn!("等待任务完成超时: {}ms", timeout_ms);
+            false
+        } else {
+            info!("等待任务完成成功，耗时: {:.2}ms", elapsed.as_secs_f64() * 1000.0);
+            true
+        }
     }
 
     /// 重置取消标志

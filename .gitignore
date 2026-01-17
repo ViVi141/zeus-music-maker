@@ -1,59 +1,148 @@
-# Rust
+# ============================================
+# Rust 项目通用忽略规则
+# ============================================
+
+# Rust 编译输出
 /target/
 **/*.rs.bk
-Cargo.lock
+*.pdb
 
-# IDE
+# Cargo 锁文件（库项目忽略，应用程序项目应提交）
+# 注意：这是应用程序项目，但如果有特殊需求可以取消注释
+# Cargo.lock
+
+# Rust 备份文件
+**/*.rs.bak
+**/*.rs.orig
+
+# ============================================
+# IDE 和编辑器
+# ============================================
+
+# Visual Studio Code
 .vscode/
+*.code-workspace
+
+# JetBrains IDEs (IntelliJ IDEA, CLion, etc.)
 .idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
 *.swp
 *.swo
 *~
+.*.sw?
 
-# OS
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============================================
+# 操作系统文件
+# ============================================
+
+# macOS
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
+.AppleDouble
+.LSOverride
+Icon
+
+# Windows
 ehthumbs.db
 Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
 
-# Logs
+# Linux
+*~
+.directory
+.Trash-*
+
+# ============================================
+# 日志和调试文件
+# ============================================
+
 *.log
 logs/
+*.log.*
+*.out
 
-# Runtime
-*.pbo
-*.pbo.bak
-*.pbo.tmp
+# ============================================
+# 构建产物和临时文件
+# ============================================
 
-# Build artifacts
+# 构建输出目录
 dist/
 build/
 out/
+release/
+debug/
 
-# Temporary files
+# 临时文件
 *.tmp
 *.temp
 *.bak
 *.backup
+*.cache
+*.swp
+*.swo
 
-# Project specific
+# ============================================
+# 项目特定文件
+# ============================================
+
 # 导出的模组文件
 @*/
 mod_export/
 music_mod_export/
+video_mod_export/
 
-# 音频文件（如果不想提交）
+# Arma 3 相关文件
+*.pbo
+*.pbo.bak
+*.pbo.tmp
+
+# ============================================
+# 媒体文件（可选，根据需要调整）
+# ============================================
+
+# 音频文件（测试文件，不提交）
+test_audio/
 *.ogg
 *.mp3
 *.wav
 *.flac
 *.m4a
 *.aac
+*.opus
 
-# 图片文件（如果不想提交）
+# 视频文件（测试文件，不提交）
+test_video/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
+*.3gp
+*.ogv
+
+# 图片文件（测试文件，不提交）
+test_images/
 *.png
 *.jpg
 *.jpeg
@@ -61,39 +150,137 @@ music_mod_export/
 *.tga
 *.tiff
 *.webp
+*.gif
 
-# PAA文件（如果不想提交）
+# PAA 文件（Arma 3 专用格式，测试文件不提交）
 *.paa
 
-# 加密音频文件
+# 加密音频文件（不提交）
 *.kgm
 *.ncm
 
-# 配置文件（如果包含敏感信息）
+# ============================================
+# 外部库和二进制文件
+# ============================================
+
+# 外部库文件（保留 .gitkeep，忽略实际 DLL）
+lib/*
+!lib/.gitkeep
+
+# DLL 文件（除了 lib 目录中的）
+*.dll
+!lib/*.dll
+
+# 动态库
+*.so
+*.dylib
+*.dll.a
+
+# 静态库
+*.a
+*.lib
+
+# ============================================
+# 配置和用户数据
+# ============================================
+
+# 用户配置文件（包含敏感信息）
 config.json
 settings.json
+user_config.json
+*.local.json
 
-# 用户数据
+# 用户数据目录
 user_data/
 saves/
 projects/
+workspace/
 
-# 外部库文件
-lib/
-libncmdump-*/
-*.dll
-*.so
-*.dylib
+# 临时配置
+.env
+.env.local
+.env.*.local
 
-# 测试文件
+# ============================================
+# 测试和开发文件
+# ============================================
+
+# 测试文件目录
 test_files/
 test_audio/
 test_images/
+test_video/
+test_data/
 
+# 基准测试结果
+target/criterion/
+
+# ============================================
 # 文档生成
+# ============================================
+
+# Rust 文档
+target/doc/
+
+# 其他文档生成
 docs/_build/
 site/
+book/
 
-# 其他
+# ============================================
+# FFmpeg 相关
+# ============================================
+
+# FFmpeg 下载目录
+ffmpeg/
+ffmpeg-*/
+ffmpeg.exe
+ffprobe.exe
+
+# ============================================
+# 版本控制和补丁文件
+# ============================================
+
 *.orig
 *.rej
+*.patch
+
+# ============================================
+# 其他
+# ============================================
+
+# 压缩文件（测试文件）
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.tar.bz2
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 备份文件
+*.backup
+*.old
+
+# 性能分析文件
+*.profdata
+*.profraw
+perf.data*
+
+# 覆盖率报告
+coverage/
+*.gcda
+*.gcno
+*.gcov
+
+# ============================================
+# 项目特定忽略（根据需要添加）
+# ============================================
+
+# 示例：忽略特定目录
+# custom_output/
+# generated_files/

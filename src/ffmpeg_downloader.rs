@@ -30,8 +30,15 @@ impl FFmpegDownloader {
         let urls = Self::get_all_download_urls();
         
         // 返回第一个URL（GitHub代理镜像2，最稳定）
-        info!("使用下载源: {}", urls[0]);
-        urls[0].clone()
+        // 虽然 get_all_download_urls() 总是返回至少4个URL，但为了健壮性添加检查
+        if let Some(url) = urls.first() {
+            info!("使用下载源: {}", url);
+            url.clone()
+        } else {
+            // 如果意外为空，返回默认URL（不应该发生）
+            warn!("下载URL列表为空，使用默认URL");
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip".to_string()
+        }
     }
 
     /// 获取所有可用的下载URL

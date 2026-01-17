@@ -3,7 +3,7 @@
  * 用于优化内存使用、CPU调度和磁盘I/O
  */
 
-use log::{info, debug};
+use log::{info, debug, warn};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
@@ -48,7 +48,10 @@ impl SmartThreadPool {
     
     /// 动态调整最大线程数（快速版本，避免启动延迟）
     pub fn adjust_thread_count(&self) {
-        let mut max_threads = self.max_threads.lock().unwrap();
+        let mut max_threads = self.max_threads.lock().unwrap_or_else(|e| {
+            warn!("最大线程数Mutex poisoned: {:?}，使用默认值", e);
+            e.into_inner()
+        });
         let original_count = *max_threads;
         
         // 简化逻辑：直接使用CPU核心数作为基础，避免耗时的系统调用
@@ -63,19 +66,31 @@ impl SmartThreadPool {
     
     /// 获取当前最大线程数
     pub fn get_max_threads(&self) -> usize {
-        *self.max_threads.lock().unwrap()
+        *self.max_threads.lock().unwrap_or_else(|e| {
+            warn!("最大线程数Mutex poisoned: {:?}，使用默认值", e);
+            e.into_inner()
+        })
     }
     
     /// 获取当前活跃线程数
     pub fn get_active_threads(&self) -> usize {
-        *self.active_threads.lock().unwrap()
+        *self.active_threads.lock().unwrap_or_else(|e| {
+            warn!("活跃线程数Mutex poisoned: {:?}，使用默认值", e);
+            e.into_inner()
+        })
     }
     
     /// 线程开始工作
     pub fn thread_start(&self, thread_id: usize) {
-        *self.active_threads.lock().unwrap() += 1;
+        *self.active_threads.lock().unwrap_or_else(|e| {
+            warn!("活跃线程数Mutex poisoned: {:?}，使用默认值", e);
+            e.into_inner()
+        }) += 1;
         
-        let mut stats = self.thread_stats.lock().unwrap();
+        let mut stats = self.thread_stats.lock().unwrap_or_else(|e| {
+            warn!("线程统计Mutex poisoned: {:?}，使用默认值", e);
+            e.into_inner()
+        });
         stats.entry(thread_id).or_insert_with(ThreadStats::default).last_activity = Instant::now();
         
         debug!("线程 {} 开始工作，当前活跃线程数: {}", thread_id, self.get_active_threads());
@@ -83,9 +98,15 @@ impl SmartThreadPool {
     
     /// 线程完成工作
     pub fn thread_finish(&self, thread_id: usize, task_duration: Duration) {
-        *self.active_threads.lock().unwrap() -= 1;
+        *self.active_threads.lock().unwrap_or_else(|e| {
+            warn!("活跃线程数Mutex poisoned: {:?}，使用默认值", e);
+            e.into_inner()
+        }) -= 1;
         
-        let mut stats = self.thread_stats.lock().unwrap();
+        let mut stats = self.thread_stats.lock().unwrap_or_else(|e| {
+            warn!("线程统计Mutex poisoned: {:?}，使用默认值", e);
+            e.into_inner()
+        });
         if let Some(thread_stat) = stats.get_mut(&thread_id) {
             thread_stat.tasks_completed += 1;
             thread_stat.total_time += task_duration;

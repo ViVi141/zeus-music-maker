@@ -1,10 +1,10 @@
 [package]
 name = "zeus-music-maker"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 authors = ["ViVi141 <747384120@qq.com>"]
 description = "宙斯音乐制作器 - 用于自动生成Arma 3音乐模组文件结构的增强版工具"
-license = "CC-BY-SA-4.0"
+license = "AGPL-3.0"
 
 [dependencies]
 # GUI Framework

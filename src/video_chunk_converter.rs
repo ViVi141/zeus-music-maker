@@ -3,7 +3,7 @@
  * 支持将大视频文件分割成多个片段进行并行转换，提高多线程利用率
  */
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use log::{info, error, debug, warn};
@@ -203,10 +203,15 @@ impl VideoChunkConverter {
         // 构建FFmpeg命令
         let mut cmd = Command::new(&self.ffmpeg_path);
         
+        let input_str = chunk.input_path.to_str()
+            .ok_or_else(|| anyhow!("分片输入路径包含无效UTF-8字符: {:?}", chunk.input_path))?;
+        let output_str = chunk.output_path.to_str()
+            .ok_or_else(|| anyhow!("分片输出路径包含无效UTF-8字符: {:?}", chunk.output_path))?;
+        
         if self.config.fast_mode {
             // 快速模式：针对短视频优化
             cmd.args(&[
-                "-i", chunk.input_path.to_str().unwrap(),
+                "-i", input_str,
                 "-ss", &chunk.start_time.to_string(),
                 "-t", &chunk.duration.to_string(),
                 "-c:v", "libtheora",
@@ -223,12 +228,12 @@ impl VideoChunkConverter {
                 "-no-scenecut", "1",               // 禁用场景检测
                 "-g", "30",                        // 固定关键帧间隔
                 "-y",
-                chunk.output_path.to_str().unwrap()
+                output_str
             ]);
         } else {
             // 标准模式
             cmd.args(&[
-                "-i", chunk.input_path.to_str().unwrap(),
+                "-i", input_str,
                 "-ss", &chunk.start_time.to_string(),
                 "-t", &chunk.duration.to_string(),
                 "-c:v", "libtheora",
@@ -243,7 +248,7 @@ impl VideoChunkConverter {
                 "-tune", "fastdecode",
                 "-movflags", "+faststart",
                 "-y",
-                chunk.output_path.to_str().unwrap()
+                output_str
             ]);
         }
 
@@ -316,14 +321,19 @@ impl VideoChunkConverter {
             .context("创建文件列表失败")?;
 
         // 构建合并命令
+        let file_list_str = file_list_path.to_str()
+            .ok_or_else(|| anyhow!("文件列表路径包含无效UTF-8字符: {:?}", file_list_path))?;
+        let output_str = output_path.to_str()
+            .ok_or_else(|| anyhow!("输出路径包含无效UTF-8字符: {:?}", output_path))?;
+        
         let mut cmd = Command::new(&self.ffmpeg_path);
         cmd.args(&[
             "-f", "concat",
             "-safe", "0",
-            "-i", file_list_path.to_str().unwrap(),
+            "-i", file_list_str,
             "-c", "copy",  // 直接复制，不重新编码
             "-y",
-            output_path.to_str().unwrap()
+            output_str
         ]);
 
         // 在Windows上隐藏命令行窗口
@@ -361,9 +371,12 @@ impl VideoChunkConverter {
 
     /// 获取视频信息
     fn get_video_info(&self, input_path: &Path) -> Result<VideoInfo> {
+        let input_str = input_path.to_str()
+            .ok_or_else(|| anyhow!("输入路径包含无效UTF-8字符: {:?}", input_path))?;
+        
         let mut cmd = Command::new(&self.ffmpeg_path);
         cmd.args(&[
-            "-i", input_path.to_str().unwrap(),
+            "-i", input_str,
             "-f", "null",
             "-"
         ]);
@@ -455,13 +468,18 @@ impl VideoChunkConverter {
             .ok_or_else(|| anyhow::anyhow!("无效的文件名"))?
             .to_string_lossy();
         
-        let chunk_filename = if chunk_index == 0 {
-            format!("{}_chunk_{}.ogv", file_stem, chunk_index)
-        } else {
-            format!("{}_chunk_{}.ogv", file_stem, chunk_index)
-        };
+        // 使用安全文件名并确保分片索引正确格式化
+        let safe_filename = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&file_stem);
+        let chunk_filename = format!("{}_chunk_{:03}.ogv", safe_filename, chunk_index);
         
-        Ok(output_dir.join(chunk_filename))
+        let mut output_path = output_dir.join(chunk_filename);
+        // 确保路径长度在限制内
+        output_path = crate::utils::string_utils::StringUtils::ensure_path_length(&output_path, 260)
+            .unwrap_or_else(|_| output_path.clone());
+        // 确保文件名唯一（分片文件名通常不会冲突，但为了安全还是检查）
+        output_path = crate::utils::string_utils::StringUtils::ensure_unique_path(output_path);
+        
+        Ok(output_path)
     }
 
     /// 清理临时分片文件

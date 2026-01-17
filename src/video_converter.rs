@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use log::{info, error, debug};
@@ -43,9 +43,14 @@ impl VideoConverter {
         }
         
         // 构建 FFmpeg 命令
+        let input_str = input_path.to_str()
+            .ok_or_else(|| anyhow!("输入路径包含无效UTF-8字符: {:?}", input_path))?;
+        let output_str = output_path.to_str()
+            .ok_or_else(|| anyhow!("输出路径包含无效UTF-8字符: {:?}", output_path))?;
+        
         let mut cmd = Command::new(&self.ffmpeg_path);
         cmd.args(&[
-            "-i", input_path.to_str().unwrap(),
+            "-i", input_str,
             "-c:v", "libtheora",  // 视频编码器：Theora
             "-q:v", &video_quality.to_string(),  // 视频质量（动态设置）
             "-speed", "8",        // 编码速度优化（0-10，8为最快速度）
@@ -54,7 +59,7 @@ impl VideoConverter {
             "-q:a", &audio_quality.to_string(),  // 音频质量（动态设置）
             "-ac", "2",           // 立体声音频，减少处理时间
             "-y",                 // 覆盖输出文件
-            output_path.to_str().unwrap()
+            output_str
         ]);
         
         // 在 Windows 上隐藏命令行窗口
@@ -102,9 +107,12 @@ impl VideoConverter {
     pub fn get_video_info(&self, input_path: &Path) -> Result<VideoInfo> {
         info!("获取视频信息: {:?}", input_path);
         
+        let input_str = input_path.to_str()
+            .ok_or_else(|| anyhow!("输入路径包含无效UTF-8字符: {:?}", input_path))?;
+        
         let mut cmd = Command::new(&self.ffmpeg_path);
         cmd.args(&[
-            "-i", input_path.to_str().unwrap(),
+            "-i", input_str,
             "-f", "null",
             "-"
         ]);

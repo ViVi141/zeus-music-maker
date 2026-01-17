@@ -145,14 +145,20 @@ impl VideoChunkParallelProcessor {
         
         // 重置统计信息
         {
-            let mut stats = self.stats.lock().unwrap();
+            let mut stats = self.stats.lock().unwrap_or_else(|e| {
+                warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
+                e.into_inner()
+            });
             *stats = ChunkConversionStats::default();
             stats.start_time = Some(Instant::now());
         }
 
         // 重置取消标志
         {
-            let mut cancel_flag = self.cancel_flag.lock().unwrap();
+            let mut cancel_flag = self.cancel_flag.lock().unwrap_or_else(|e| {
+                warn!("取消标志Mutex poisoned: {:?}，使用默认值", e);
+                e.into_inner()
+            });
             *cancel_flag = false;
         }
 
@@ -166,7 +172,10 @@ impl VideoChunkParallelProcessor {
 
         // 更新统计信息
         {
-            let mut stats = self.stats.lock().unwrap();
+            let mut stats = self.stats.lock().unwrap_or_else(|e| {
+                warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
+                e.into_inner()
+            });
             stats.total_tasks = tasks.len();
             stats.total_chunks = tasks.iter().map(|t| t.chunks.len()).sum();
         }
@@ -198,25 +207,31 @@ impl VideoChunkParallelProcessor {
                 continue;
             }
 
-            // 为每个视频创建单独的输出目录
-            let video_output_dir = output_dir.join(
-                input_path.file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string()
-            );
+            // 为每个视频创建单独的输出目录（使用安全文件名）
+            let safe_dir_name = if let Some(file_stem) = input_path.file_stem() {
+                crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&file_stem.to_string_lossy())
+            } else {
+                format!("video_{:03}", task_id)
+            };
+            let video_output_dir = output_dir.join(safe_dir_name);
 
             // 生成分片计划
             match converter.create_chunk_plan(&input_path, &video_output_dir) {
                 Ok(chunks) => {
-                    let final_output_path = output_dir.join(
-                        format!("{}.ogv", 
-                            input_path.file_stem()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                        )
-                    );
+                    // 使用安全文件名
+                    let safe_filename = if let Some(file_stem) = input_path.file_stem() {
+                        crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&file_stem.to_string_lossy())
+                    } else {
+                        format!("video_{:03}", task_id)
+                    };
+                    let mut final_output_path = output_dir.join(format!("{}.ogv", safe_filename));
+                    // 确保路径长度在限制内
+                    final_output_path = crate::utils::string_utils::StringUtils::ensure_path_length(&final_output_path, 260)
+                        .unwrap_or_else(|_| final_output_path.clone());
+                    // 确保文件名唯一
+                    final_output_path = crate::utils::string_utils::StringUtils::ensure_unique_path(final_output_path);
 
+                    let chunk_count = chunks.len();
                     tasks.push(ChunkConversionTask {
                         task_id,
                         input_path: input_path.clone(),
@@ -227,7 +242,7 @@ impl VideoChunkParallelProcessor {
                     });
 
                     info!("为视频创建了转换任务: {} ({}个分片)", 
-                          input_path.display(), tasks.last().unwrap().chunks.len());
+                          input_path.display(), chunk_count);
                 }
                 Err(e) => {
                     warn!("为视频创建分片计划失败: {} - {}", input_path.display(), e);
@@ -292,7 +307,10 @@ impl VideoChunkParallelProcessor {
             }
 
             // 发送完成消息
-            let final_stats = stats.lock().unwrap();
+            let final_stats = stats.lock().unwrap_or_else(|e| {
+                warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
+                e.into_inner()
+            });
             let total_duration = final_stats.start_time
                 .map(|start| start.elapsed())
                 .unwrap_or_default();
@@ -322,7 +340,10 @@ impl VideoChunkParallelProcessor {
 
         while let Ok(task) = task_receiver.recv() {
             // 检查取消标志
-            if *cancel_flag.lock().unwrap() {
+            if *cancel_flag.lock().unwrap_or_else(|e| {
+                warn!("取消标志Mutex poisoned: {:?}，假设任务被取消", e);
+                e.into_inner()
+            }) {
                 info!("工作线程 {} 收到取消信号，退出", worker_id);
                 break;
             }
@@ -343,7 +364,10 @@ impl VideoChunkParallelProcessor {
                     });
 
                     // 更新统计信息
-                    let mut stats = stats.lock().unwrap();
+                    let mut stats = stats.lock().unwrap_or_else(|e| {
+                        warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
+                        e.into_inner()
+                    });
                     stats.completed_tasks += 1;
                     if result.result.success {
                         stats.successful_tasks += 1;
@@ -355,7 +379,10 @@ impl VideoChunkParallelProcessor {
                     warn!("处理视频任务失败: {}", e);
                     
                     // 更新统计信息
-                    let mut stats = stats.lock().unwrap();
+                    let mut stats = stats.lock().unwrap_or_else(|e| {
+                        warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
+                        e.into_inner()
+                    });
                     stats.completed_tasks += 1;
                     stats.failed_tasks += 1;
                 }
@@ -410,7 +437,10 @@ impl VideoChunkParallelProcessor {
 
         // 更新分片统计信息
         {
-            let mut stats = stats.lock().unwrap();
+            let mut stats = stats.lock().unwrap_or_else(|e| {
+                warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
+                e.into_inner()
+            });
             stats.completed_chunks += task.chunks.len();
             stats.successful_chunks += successful_chunks;
             stats.failed_chunks += failed_chunks;
@@ -495,7 +525,10 @@ impl VideoChunkParallelProcessor {
         thread_pool.scope(|s| {
             while let Ok((chunk_index, chunk)) = chunk_receiver.recv() {
                 // 检查取消标志
-                if *cancel_flag.lock().unwrap() {
+                if *cancel_flag.lock().unwrap_or_else(|e| {
+                    warn!("取消标志Mutex poisoned: {:?}，假设任务被取消", e);
+                    e.into_inner()
+                }) {
                     break;
                 }
 
@@ -537,7 +570,10 @@ impl VideoChunkParallelProcessor {
             }
         });
 
-        let results = results_mutex.lock().unwrap();
+        let results = results_mutex.lock().unwrap_or_else(|e| {
+            warn!("结果Mutex poisoned: {:?}，使用默认值", e);
+            e.into_inner()
+        });
         let mut final_results = Vec::new();
         for result in results.iter() {
             final_results.push(match result {

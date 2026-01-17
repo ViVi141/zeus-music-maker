@@ -36,7 +36,8 @@ impl<'a> KuGouDecoder<'a> {
         static KEYS: LazyLock<Box<[u8]>> = LazyLock::new(|| {
             // 仅在真正需要解密时才加载密钥数据
             let kgm_key_xz = EMBEDDED_RESOURCES.get_kugou_key()
-                .expect("Failed to get embedded KuGou key");
+                .ok_or_else(|| anyhow!("无法获取嵌入的酷狗密钥，请检查assets/kugou_key.xz文件是否存在于构建中"))
+                .expect("无法获取嵌入的酷狗密钥");
             let mut xz_decoder = XzDecoder::new(Bytes::new(&kgm_key_xz));
             let mut key = vec![0; (KuGouDecoder::PUB_KEY_LEN / KuGouDecoder::PUB_KEY_LEN_MAGNIFICATION) as usize];
             match xz_decoder.read_exact(&mut key) {
@@ -208,17 +209,28 @@ impl AudioDecryptManager {
         let input_file = std::fs::File::open(input_path)?;
         let mut decoder = KuGouDecoder::try_new(input_file)?;
         
-        // 生成输出文件名
+        // 生成输出文件名（使用安全文件名）
         let file_stem = input_path.file_stem()
             .ok_or_else(|| anyhow!("Invalid file name"))?
             .to_string_lossy();
         
-        let output_path = output_dir.join(format!("{}.mp3", file_stem));
+        let safe_filename = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&file_stem);
+        let mut output_path = output_dir.join(format!("{}.mp3", safe_filename));
+        // 确保路径长度在限制内
+        output_path = crate::utils::string_utils::StringUtils::ensure_path_length(&output_path, 260)
+            .unwrap_or_else(|_| output_path.clone());
+        // 确保文件名唯一
+        output_path = crate::utils::string_utils::StringUtils::ensure_unique_path(output_path);
         let detected_format = decoder.decrypt_to_file_with_cancel(&output_path, should_cancel)?;
         
         // 如果检测到的格式不是mp3，重命名文件
         if detected_format != "mp3" {
-            let final_path = output_dir.join(format!("{}.{}", file_stem, detected_format));
+            let mut final_path = output_dir.join(format!("{}.{}", safe_filename, detected_format));
+            // 确保路径长度在限制内
+            final_path = crate::utils::string_utils::StringUtils::ensure_path_length(&final_path, 260)
+                .unwrap_or_else(|_| final_path.clone());
+            // 确保文件名唯一
+            final_path = crate::utils::string_utils::StringUtils::ensure_unique_path(final_path);
             std::fs::rename(&output_path, &final_path)?;
             Ok(final_path.to_string_lossy().to_string())
         } else {
@@ -231,19 +243,25 @@ impl AudioDecryptManager {
     pub fn decrypt_netease_file(input_path: &Path, output_dir: &Path) -> Result<String> {
         #[cfg(windows)]
         {
-            // 生成输出文件名
+            // 生成输出文件名（使用安全文件名）
             let file_stem = input_path.file_stem()
                 .ok_or_else(|| anyhow!("Invalid file name"))?
                 .to_string_lossy();
+            
+            let safe_filename = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&file_stem);
             
             // 使用libncmdump DLL解密（DLL会自动输出到源文件位置）
             Self::decrypt_ncm_with_dll(input_path)?;
             
             // 检查源文件目录中是否生成了mp3文件
-            let input_dir = input_path.parent().unwrap();
+            let input_dir = input_path.parent()
+                .ok_or_else(|| anyhow!("无法获取输入文件的父目录: {:?}", input_path))?;
+            // 注意：DLL可能使用原始文件名输出，所以需要检查原始文件名和安全文件名
             let possible_output_paths = vec![
                 input_dir.join(format!("{}.mp3", file_stem)),
                 input_dir.join(format!("{}.flac", file_stem)),
+                input_dir.join(format!("{}.mp3", safe_filename)),
+                input_dir.join(format!("{}.flac", safe_filename)),
             ];
             
             let mut found_path = None;
@@ -260,7 +278,23 @@ impl AudioDecryptManager {
             
             // 如果输出目录不是源文件目录，移动文件到指定目录
             if output_dir != input_dir {
-                let final_output_path = output_dir.join(output_path.file_name().unwrap());
+                // 使用安全文件名
+                let output_stem = output_path.file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy();
+                let output_ext = output_path.extension()
+                    .unwrap_or_default()
+                    .to_string_lossy();
+                
+                // 使用安全文件名生成最终路径
+                let safe_output_stem = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&output_stem);
+                let mut final_output_path = output_dir.join(format!("{}.{}", safe_output_stem, output_ext));
+                // 确保路径长度在限制内
+                final_output_path = crate::utils::string_utils::StringUtils::ensure_path_length(&final_output_path, 260)
+                    .unwrap_or_else(|_| final_output_path.clone());
+                // 确保文件名唯一
+                final_output_path = crate::utils::string_utils::StringUtils::ensure_unique_path(final_output_path);
+                
                 std::fs::create_dir_all(output_dir)?;
                 
                 // 使用复制+删除的方式处理跨磁盘移动

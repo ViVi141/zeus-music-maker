@@ -172,37 +172,38 @@ impl eframe::App for ZeusMusicApp {
         // 1. 立即取消所有正在运行的任务
         self.task_processor.cancel_task();
         
-        // 2. 快速保存配置文件（异步，不等待）
+        // 2. 快速保存配置文件（异步，不等待完成）
+        // 注意：由于 std::process::exit(0) 会立即终止所有线程，
+        // 我们使用 detach 方式，让系统在进程退出时自动清理
         let state_clone = self.state.clone();
         std::thread::spawn(move || {
+            // 尝试快速保存，但不阻塞主线程
             if let Err(e) = state_clone.save_config() {
                 warn!("保存配置文件失败: {}", e);
             }
         });
         
+        // 给保存线程一点时间（但不超过50ms）
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        
         // 3. 检查是否有快速关闭环境变量
         let fast_shutdown = std::env::var("RUST_FAST_SHUTDOWN").unwrap_or_default() == "1";
         
-        if fast_shutdown {
-            // 快速关闭模式：最多等待500毫秒
-            if !self.task_processor.wait_for_completion(500) {
-                warn!("快速关闭：任务未在500毫秒内完成，强制关闭");
-            }
-        } else {
-            // 正常关闭模式：最多等待1秒
-            if !self.task_processor.wait_for_completion(1000) {
-                warn!("任务未在1秒内完成，强制关闭");
-            }
+        // 4. 等待任务完成（使用较短的超时时间）
+        let wait_timeout = if fast_shutdown { 300 } else { 500 }; // 减少等待时间
+        if !self.task_processor.wait_for_completion(wait_timeout) {
+            warn!("任务未在{}毫秒内完成，强制关闭", wait_timeout);
         }
         
-        // 4. 快速清理资源
+        // 6. 快速清理资源
         self.cleanup_resources();
         
-        // 5. 记录运行时间
+        // 7. 记录运行时间
         let uptime = self.lifecycle.get_uptime();
         info!("应用程序已关闭，运行时间: {:.2}秒", uptime.as_secs_f64());
         
-        // 6. 立即退出（不等待其他线程）
+        // 8. 立即退出（不等待其他线程）
+        // 使用 std::process::exit(0) 会立即终止所有线程，这是最快的退出方式
         std::process::exit(0);
     }
 }
@@ -480,7 +481,11 @@ impl ZeusMusicApp {
                 // 更新进度
                 if let Some(ref mut task) = self.state.task_manager.current_task {
                     task.current_file = completed_count;
-                    task.progress = completed_count as f32 / total_tasks as f32;
+                    task.progress = if total_tasks > 0 {
+                        completed_count as f32 / total_tasks as f32
+                    } else {
+                        0.0
+                    };
                     
                     // 根据结果更新任务信息
                     match result {
@@ -560,7 +565,7 @@ impl ZeusMusicApp {
                 if let Some(ref mut task) = self.state.task_manager.current_task {
                     task.current_file = task_id + 1;
                     task.current_filename = format!("{} ({}个分片)", input_path.display(), chunk_count);
-                    task.total_files = task.total_files; // 保持原有总数
+                    // 保持原有总数不变
                 }
             }
             ChunkProgressUpdate::ChunkStarted { task_id, chunk_index, chunk_path } => {
@@ -587,7 +592,11 @@ impl ZeusMusicApp {
                 // 更新进度
                 if let Some(ref mut task) = self.state.task_manager.current_task {
                     task.current_file = task.current_file + 1;
-                    task.progress = task.current_file as f32 / task.total_files as f32;
+                    task.progress = if task.total_files > 0 {
+                        task.current_file as f32 / task.total_files as f32
+                    } else {
+                        0.0
+                    };
                     
                     if result.result.success {
                         task.current_filename = result.result.get_success_message();

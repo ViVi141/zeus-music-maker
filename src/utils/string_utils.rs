@@ -173,10 +173,16 @@ impl StringUtils {
         // 首先将中文字符转换为拼音
         let pinyin_input = Self::chinese_to_pinyin(input);
         
+        // Windows 保留字符列表
+        const WINDOWS_RESERVED_CHARS: &[char] = &['<', '>', ':', '"', '|', '?', '*', '\\', '/'];
+        
         // 然后确保所有字符都是ASCII安全的
         let mut result = String::with_capacity(pinyin_input.len());
         for c in pinyin_input.chars() {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' ' || c == '.' {
+            // 首先检查是否为 Windows 保留字符
+            if WINDOWS_RESERVED_CHARS.contains(&c) {
+                result.push('_');
+            } else if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' ' || c == '.' {
                 result.push(c);
             } else {
                 result.push('_');
@@ -198,9 +204,9 @@ impl StringUtils {
         if cleaned.is_empty() || cleaned.chars().all(|c| c == '_') {
             "track".to_string()
         } else {
-            // 确保文件名不会太长（限制在50个字符以内）
-            if cleaned.len() > 50 {
-                let truncated = cleaned.chars().take(47).collect::<String>();
+            // 确保文件名不会太长（限制在200个字符以内，为路径预留空间）
+            if cleaned.len() > 200 {
+                let truncated = cleaned.chars().take(197).collect::<String>();
                 format!("{}...", truncated)
             } else {
                 cleaned
@@ -309,5 +315,108 @@ impl StringUtils {
                 *c == '.'
             })
             .collect()
+    }
+
+    /// 确保文件路径长度在限制内，如果过长则截断文件名
+    /// Windows MAX_PATH 为 260 字符
+    pub fn ensure_path_length(path: &std::path::Path, max_length: usize) -> anyhow::Result<std::path::PathBuf> {
+        use anyhow::anyhow;
+        
+        let path_str = path.to_string_lossy();
+        if path_str.len() <= max_length {
+            return Ok(path.to_path_buf());
+        }
+        
+        // 路径过长，需要截断文件名部分
+        let parent = path.parent()
+            .ok_or_else(|| anyhow!("无法获取父目录"))?;
+        let file_name = path.file_name()
+            .ok_or_else(|| anyhow!("无法获取文件名"))?
+            .to_string_lossy();
+        
+        // 计算可用长度（预留10字符作为安全边距）
+        let parent_str = parent.to_string_lossy();
+        let available_len = max_length.saturating_sub(parent_str.len() + 10);
+        
+        if available_len < 10 {
+            return Err(anyhow!("路径过长，无法处理。父目录路径: {}", parent_str));
+        }
+        
+        // 截断文件名
+        let truncated_name = if file_name.len() > available_len {
+            let stem = path.file_stem()
+                .unwrap_or_default()
+                .to_string_lossy();
+            let ext = path.extension()
+                .unwrap_or_default()
+                .to_string_lossy();
+            
+            let ext_len = ext.len() + 1; // +1 for the dot
+            let stem_available = available_len.saturating_sub(ext_len + 3); // +3 for "..."
+            
+            if stem_available < 5 {
+                // 如果可用长度太小，使用默认名称
+                format!("file_{}.{}", 
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() % 10000,
+                    ext
+                )
+            } else {
+                let truncated_stem: String = stem.chars().take(stem_available).collect();
+                format!("{}...{}", truncated_stem, ext)
+            }
+        } else {
+            file_name.to_string()
+        };
+        
+        Ok(parent.join(truncated_name))
+    }
+
+    /// 检查并处理文件路径冲突，如果文件已存在则添加数字后缀
+    pub fn ensure_unique_path(path: std::path::PathBuf) -> std::path::PathBuf {
+        if !path.exists() {
+            return path;
+        }
+        
+        let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+        let file_stem = path.file_stem()
+            .unwrap_or_default()
+            .to_string_lossy();
+        let extension = path.extension()
+            .unwrap_or_default()
+            .to_string_lossy();
+        
+        let mut counter = 1;
+        loop {
+            let new_name = if extension.is_empty() {
+                format!("{}_{}", file_stem, counter)
+            } else {
+                format!("{}_{}.{}", file_stem, counter, extension)
+            };
+            
+            let new_path = parent.join(new_name);
+            if !new_path.exists() {
+                return new_path;
+            }
+            
+            counter += 1;
+            
+            // 防止无限循环（最多尝试1000次）
+            if counter > 1000 {
+                // 使用时间戳作为最后的备选方案
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let final_name = if extension.is_empty() {
+                    format!("{}_{}", file_stem, timestamp)
+                } else {
+                    format!("{}_{}.{}", file_stem, timestamp, extension)
+                };
+                return parent.join(final_name);
+            }
+        }
     }
 }
