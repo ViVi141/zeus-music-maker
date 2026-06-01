@@ -604,6 +604,8 @@ impl UIComponents {
 
         let mut append_tags = state.export_settings.append_tags;
         let mut use_default_logo = state.export_settings.use_default_logo;
+        let mut use_stringtable = state.export_settings.use_stringtable;
+        let mut use_google_translate = state.export_settings.use_google_translate;
         let mut should_close = false;
         let mut should_export = false;
         let mut export_dir = None;
@@ -645,6 +647,32 @@ impl UIComponents {
                             ui.add_space(8.0);
                             
                             ui.checkbox(&mut use_default_logo, "使用默认Logo");
+
+                            ui.add_space(8.0);
+
+                            ui.checkbox(
+                                &mut use_stringtable,
+                                "使用 Stringtable 本地化（支持中文曲目名，推荐）",
+                            );
+                            if use_stringtable {
+                                ui.label(
+                                    egui::RichText::new(
+                                        "将生成 stringtable.xml，配置中使用 $STR_ 键；\
+                                         游戏语言为简体中文/繁体中文时显示中文曲名。",
+                                    )
+                                    .small()
+                                    .weak(),
+                                );
+
+                                ui.add_space(4.0);
+
+                                ui.checkbox(
+                                    &mut use_google_translate,
+                                    "使用 Google 翻译生成英文回退（需联网，失败则用拼音）",
+                                );
+                            } else {
+                                use_google_translate = false;
+                            }
                         });
                     });
                     
@@ -671,6 +699,8 @@ impl UIComponents {
         if should_close {
             state.export_settings.append_tags = append_tags;
             state.export_settings.use_default_logo = use_default_logo;
+            state.export_settings.use_stringtable = use_stringtable;
+            state.export_settings.use_google_translate = use_google_translate;
             state.show_export_dialog = false;
         }
 
@@ -873,6 +903,9 @@ impl UIComponents {
             });
             
         if should_close {
+            use crate::utils::string_utils::StringUtils;
+            track.internally_renamed =
+                StringUtils::is_internal_rename_result(&track.track_name);
             state.show_track_editor = false;
         }
     }
@@ -952,6 +985,8 @@ impl UIComponents {
                             &state.tracks,
                             &files,
                             state.export_settings.append_tags,
+                            state.export_settings.use_stringtable,
+                            state.export_settings.use_google_translate,
                             &mod_dir,
                         )
                     }
@@ -962,6 +997,8 @@ impl UIComponents {
                             &[], // 视频模组不需要音频轨道
                             &files,
                             state.export_settings.append_tags,
+                            state.export_settings.use_stringtable,
+                            state.export_settings.use_google_translate,
                             &mod_dir,
                         )
                     }
@@ -969,6 +1006,15 @@ impl UIComponents {
                 
                 match config_result {
                     Ok(_) => {
+                        if state.export_settings.use_stringtable {
+                            if state.export_settings.use_google_translate {
+                                success_steps.push(
+                                    "生成 stringtable.xml（含 Google 翻译英文回退）".to_string(),
+                                );
+                            } else {
+                                success_steps.push("生成 stringtable.xml（拼音英文回退）".to_string());
+                            }
+                        }
                         success_steps.push("生成配置文件".to_string());
                         
                         // 构建最终结果消息
@@ -1047,7 +1093,11 @@ impl UIComponents {
                     // 生成mod.cpp
                     let template_engine = TemplateEngine::default();
                     let mod_path = mod_dir.join("mod.cpp");
-                    if let Err(e) = template_engine.generate_mod_cpp(&state.project, &mod_path) {
+                    if let Err(e) = template_engine.generate_mod_cpp(
+                        &state.project,
+                        state.export_settings.use_stringtable,
+                        &mod_path,
+                    ) {
                         warn!("生成mod.cpp失败: {}", e);
                         // 显示错误提示
                         state.export_result = Some(format!("插件构建失败！\n\n错误: {}", e));

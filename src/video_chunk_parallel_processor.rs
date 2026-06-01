@@ -106,6 +106,8 @@ struct ChunkConversionStats {
     successful_chunks: usize,
     failed_chunks: usize,
     start_time: Option<Instant>,
+    /// 收集所有任务结果
+    task_results: Vec<ChunkConversionTaskResult>,
 }
 
 impl VideoChunkParallelProcessor {
@@ -315,7 +317,8 @@ impl VideoChunkParallelProcessor {
                 .map(|start| start.elapsed())
                 .unwrap_or_default();
 
-            let results = vec![]; // TODO: 收集所有结果
+            // 收集所有任务结果
+            let results = final_stats.task_results.clone();
             let _ = progress_sender.send(ChunkProgressUpdate::AllTasksCompleted {
                 success_count: final_stats.successful_tasks,
                 error_count: final_stats.failed_tasks,
@@ -363,7 +366,7 @@ impl VideoChunkParallelProcessor {
                         result: result.clone(),
                     });
 
-                    // 更新统计信息
+                    // 更新统计信息并收集结果
                     let mut stats = stats.lock().unwrap_or_else(|e| {
                         warn!("统计信息Mutex poisoned: {:?}，使用默认值", e);
                         e.into_inner()
@@ -374,6 +377,8 @@ impl VideoChunkParallelProcessor {
                     } else {
                         stats.failed_tasks += 1;
                     }
+                    // 收集任务结果
+                    stats.task_results.push(result.clone());
                 }
                 Err(e) => {
                     warn!("处理视频任务失败: {}", e);

@@ -103,16 +103,17 @@ impl FileOperations {
                 continue;
             }
 
-            // 生成安全的轨道名称
+            // 保留原始文件名作为曲目显示名（stringtable 写入中文；磁盘文件名仍用拼音）
             let track_name = path
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            
-            let safe_track_name = StringUtils::safe_filename_pinyin(&track_name, index);
+                .unwrap_or_else(|| format!("track_{:03}", index));
+
+            let internally_renamed = StringUtils::is_internal_rename_result(&track_name);
 
             // 创建轨道
-            let mut track = Track::new(path.clone(), safe_track_name, class_name.to_string());
+            let mut track = Track::new(path.clone(), track_name, class_name.to_string());
+            track.internally_renamed = internally_renamed;
 
             // 获取音频信息
             match AudioProcessor::get_audio_info(path) {

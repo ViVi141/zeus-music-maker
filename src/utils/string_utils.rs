@@ -287,6 +287,43 @@ impl StringUtils {
         result
     }
 
+    /// 判断文本是否像内部拼音/ASCII 重命名结果（不宜送 Google 翻译）
+    pub fn is_internal_rename_result(input: &str) -> bool {
+        if !Self::is_english_only(input) {
+            return false;
+        }
+
+        // to_ascii_safe_pinyin 替换特殊字符时常见的连字符+下划线组合
+        if input.contains("-_") || input.contains("_-_") || input.contains("__") {
+            return true;
+        }
+
+        // 多段下划线分隔的小写片段（典型拼音文件名）
+        let underscore_parts: Vec<&str> = input.split('_').filter(|part| !part.is_empty()).collect();
+        if underscore_parts.len() >= 2 {
+            let lowercase_only_parts = underscore_parts
+                .iter()
+                .filter(|part| {
+                    part.chars().any(|c| c.is_ascii_alphabetic())
+                        && part.chars().all(|c| c.is_ascii_alphanumeric() || c == ' ')
+                        && !part.chars().any(|c| c.is_ascii_uppercase())
+                })
+                .count();
+            if lowercase_only_parts >= 2 {
+                return true;
+            }
+        }
+
+        // 长串纯小写罗马音/拼音（如 utsuseewa、sansuujiaoshi）
+        for token in input.split(|c: char| !c.is_ascii_alphabetic()) {
+            if token.len() >= 8 && token.chars().all(|c| c.is_ascii_lowercase()) {
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// 检查字符串是否只包含英文字符、数字、空格和常用符号
     pub fn is_english_only(input: &str) -> bool {
         if input.is_empty() {

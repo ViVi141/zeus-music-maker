@@ -19,6 +19,6 @@ class CfgMusicClasses
 {
     class {{class_name}}
     {
-        displayName = "{{mod_name}}";
+        displayName = "{{music_class_name}}";
     };
 };

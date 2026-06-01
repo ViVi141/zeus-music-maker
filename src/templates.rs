@@ -1,12 +1,17 @@
 use anyhow::{Context, Result};
 use handlebars::Handlebars;
-use log::{debug, info};
+use log::{debug, info, warn};
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
 
-use crate::models::{ProjectSettings, Track};
 use crate::embedded::EMBEDDED_RESOURCES;
+use crate::models::{ProjectSettings, Track};
+use crate::stringtable::{
+    generate_music_stringtable, generate_video_stringtable, key_author, key_mod_name,
+    key_music_class, key_track, localization_prefix, str_reference, write_stringtable,
+};
+use crate::translation::GoogleTranslateClient;
 
 /// 模板数据
 #[derive(Debug, Serialize)]
@@ -15,6 +20,7 @@ pub struct ConfigTemplateData {
     pub mod_name: String,
     pub author_name: String,
     pub class_name: String,
+    pub music_class_name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -33,7 +39,6 @@ pub struct TrackTemplateData {
     pub class_name: String,
 }
 
-
 /// 模板引擎
 pub struct TemplateEngine {
     handlebars: Handlebars<'static>,
@@ -44,30 +49,28 @@ impl TemplateEngine {
         let mut handlebars = Handlebars::new();
         handlebars.set_strict_mode(true);
 
-        // 注册模板
         Self::register_templates(&mut handlebars)?;
 
         Ok(Self { handlebars })
     }
 
-    /// 注册所有模板
     fn register_templates(handlebars: &mut Handlebars) -> Result<()> {
-        // 从嵌入资源获取config.cpp模板
-        let config_template = EMBEDDED_RESOURCES.get_template("config")
+        let config_template = EMBEDDED_RESOURCES
+            .get_template("config")
             .ok_or_else(|| anyhow::anyhow!("Failed to get embedded config template"))?;
         handlebars
             .register_template_string("config", config_template)
             .context("注册config模板失败")?;
 
-        // 从嵌入资源获取mod.cpp模板
-        let mod_template = EMBEDDED_RESOURCES.get_template("mod")
+        let mod_template = EMBEDDED_RESOURCES
+            .get_template("mod")
             .ok_or_else(|| anyhow::anyhow!("Failed to get embedded mod template"))?;
         handlebars
             .register_template_string("mod", mod_template)
             .context("注册mod模板失败")?;
 
-        // 从嵌入资源获取FileListWithMusicTracks.hpp模板
-        let track_template = EMBEDDED_RESOURCES.get_template("FileListWithMusicTracks")
+        let track_template = EMBEDDED_RESOURCES
+            .get_template("FileListWithMusicTracks")
             .ok_or_else(|| anyhow::anyhow!("Failed to get embedded track template"))?;
         handlebars
             .register_template_string("track", track_template)
@@ -77,17 +80,55 @@ impl TemplateEngine {
         Ok(())
     }
 
+    fn write_arma_config_file(path: &Path, content: &str) -> Result<()> {
+        let mut content_with_crlf = content.replace('\n', "\r\n");
+        if !content_with_crlf.ends_with("\r\n") {
+            content_with_crlf.push_str("\r\n");
+        }
+        fs::write(path, content_with_crlf.as_bytes())
+            .with_context(|| format!("写入配置文件失败: {:?}", path))
+    }
+
+    fn mod_display_name(project: &ProjectSettings, use_stringtable: bool) -> String {
+        if use_stringtable {
+            str_reference(&key_mod_name(&localization_prefix(&project.class_name)))
+        } else {
+            crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.mod_name)
+        }
+    }
+
+    fn author_display_name(project: &ProjectSettings, use_stringtable: bool) -> String {
+        if use_stringtable {
+            str_reference(&key_author(&localization_prefix(&project.class_name)))
+        } else {
+            crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.author_name)
+        }
+    }
+
+    fn music_class_identifier(project: &ProjectSettings) -> String {
+        crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.class_name)
+    }
+
     /// 生成config.cpp文件
-    pub fn generate_config_cpp(&self, project: &ProjectSettings, _tracks: &[Track], _copied_files: &[String], _use_tags: bool, output_path: &Path) -> Result<()> {
-        // 使用拼音风格转换项目信息
-        let ascii_mod_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.mod_name);
-        let ascii_author_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.author_name);
+    pub fn generate_config_cpp(
+        &self,
+        project: &ProjectSettings,
+        use_stringtable: bool,
+        output_path: &Path,
+    ) -> Result<()> {
+        let prefix = localization_prefix(&project.class_name);
+        let music_class_name = if use_stringtable {
+            str_reference(&key_music_class(&prefix))
+        } else {
+            Self::mod_display_name(project, false)
+        };
 
         let data = ConfigTemplateData {
             mod_name_no_spaces: project.mod_name_no_spaces(),
-            mod_name: ascii_mod_name,
-            author_name: ascii_author_name,
+            mod_name: Self::mod_display_name(project, use_stringtable),
+            author_name: Self::author_display_name(project, use_stringtable),
             class_name: project.class_name.clone(),
+            music_class_name,
         };
 
         let content = self
@@ -95,30 +136,21 @@ impl TemplateEngine {
             .render("config", &data)
             .context("渲染config模板失败")?;
 
-        // Arma 3 需要特定的文件格式：无BOM + Windows行结束符 + 文件结尾空行
-        // 确保使用Windows行结束符（\r\n）并添加结尾空行
-        let mut content_with_crlf = content.replace('\n', "\r\n");
-        if !content_with_crlf.ends_with("\r\n") {
-            content_with_crlf.push_str("\r\n");
-        }
-        let content_bytes = content_with_crlf.as_bytes();
-        
-        fs::write(output_path, content_bytes)
-            .with_context(|| format!("写入config.cpp失败: {:?}", output_path))?;
-
+        Self::write_arma_config_file(output_path, &content)?;
         debug!("生成config.cpp: {:?}", output_path);
         Ok(())
     }
 
     /// 生成mod.cpp文件
-    pub fn generate_mod_cpp(&self, project: &ProjectSettings, output_path: &Path) -> Result<()> {
-        // 使用拼音风格转换项目信息
-        let ascii_mod_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.mod_name);
-        let ascii_author_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.author_name);
-
+    pub fn generate_mod_cpp(
+        &self,
+        project: &ProjectSettings,
+        use_stringtable: bool,
+        output_path: &Path,
+    ) -> Result<()> {
         let data = ModTemplateData {
-            mod_name: ascii_mod_name,
-            author_name: ascii_author_name,
+            mod_name: Self::mod_display_name(project, use_stringtable),
+            author_name: Self::author_display_name(project, use_stringtable),
         };
 
         let content = self
@@ -126,17 +158,7 @@ impl TemplateEngine {
             .render("mod", &data)
             .context("渲染mod模板失败")?;
 
-        // Arma 3 需要特定的文件格式：无BOM + Windows行结束符 + 文件结尾空行
-        // 确保使用Windows行结束符（\r\n）并添加结尾空行
-        let mut content_with_crlf = content.replace('\n', "\r\n");
-        if !content_with_crlf.ends_with("\r\n") {
-            content_with_crlf.push_str("\r\n");
-        }
-        let content_bytes = content_with_crlf.as_bytes();
-        
-        fs::write(output_path, content_bytes)
-            .with_context(|| format!("写入mod.cpp失败: {:?}", output_path))?;
-
+        Self::write_arma_config_file(output_path, &content)?;
         debug!("生成mod.cpp: {:?}", output_path);
         Ok(())
     }
@@ -148,27 +170,32 @@ impl TemplateEngine {
         tracks: &[Track],
         copied_files: &[String],
         use_tags: bool,
+        use_stringtable: bool,
         output_path: &Path,
     ) -> Result<()> {
+        let prefix = localization_prefix(&project.class_name);
+        let class_id = Self::music_class_identifier(project);
         let mut content = String::new();
 
         for (i, track) in tracks.iter().enumerate() {
-            let track_name = if use_tags && !track.tag.is_empty() {
-                format!("[{}] {}", track.tag, track.track_name)
+            let track_name = if use_stringtable {
+                str_reference(&key_track(&prefix, i))
             } else {
-                track.track_name.clone()
+                let display = if use_tags && !track.tag.is_empty() {
+                    format!("[{}] {}", track.tag, track.track_name)
+                } else {
+                    track.track_name.clone()
+                };
+                crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&display)
             };
 
-            // 使用拼音风格转换轨道名称
-            let ascii_track_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&track_name);
-
-            // 使用拼音风格转换类名
-            let ascii_class_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.class_name);
-
-            let track_class = format!("{}Song{}", ascii_class_name, i);
-            // 使用重命名后的文件名
-            let filename = copied_files.get(i).map(|s| s.as_str()).unwrap_or(&track.track_name);
-            let track_path = format!("{}\\folderwithtracks\\{}", project.mod_name_no_spaces(), filename);
+            let track_class = format!("{}Song{}", class_id, i);
+            let filename = copied_files.get(i).map(|s| s.as_str()).unwrap_or("track.ogg");
+            let track_path = format!(
+                "{}\\folderwithtracks\\{}",
+                project.mod_name_no_spaces(),
+                filename
+            );
             let decibels = if track.decibels >= 0 {
                 format!("+{}", track.decibels)
             } else {
@@ -177,11 +204,11 @@ impl TemplateEngine {
 
             let data = TrackTemplateData {
                 track_class,
-                track_name: ascii_track_name,
+                track_name,
                 track_path,
                 decibels,
                 duration: track.duration,
-                class_name: ascii_class_name,
+                class_name: class_id.clone(),
             };
 
             let track_content = self
@@ -193,39 +220,63 @@ impl TemplateEngine {
             content.push('\n');
         }
 
-        // Arma 3 需要特定的文件格式：无BOM + Windows行结束符 + 文件结尾空行
-        // 确保使用Windows行结束符（\r\n）并添加结尾空行
-        let mut content_with_crlf = content.replace('\n', "\r\n");
-        if !content_with_crlf.ends_with("\r\n") {
-            content_with_crlf.push_str("\r\n");
-        }
-        let content_bytes = content_with_crlf.as_bytes();
-        
-        fs::write(output_path, content_bytes)
-            .with_context(|| format!("写入FileListWithMusicTracks.hpp失败: {:?}", output_path))?;
-
+        Self::write_arma_config_file(output_path, &content)?;
         debug!("生成FileListWithMusicTracks.hpp: {:?}", output_path);
         Ok(())
     }
 
     /// 生成视频模组的config.cpp文件
-    pub fn generate_video_config_cpp(&self, project: &ProjectSettings, output_path: &Path) -> Result<()> {
-        // 使用拼音风格转换项目信息
-        let ascii_mod_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.mod_name);
-        let ascii_author_name = crate::utils::string_utils::StringUtils::to_ascii_safe_pinyin(&project.author_name);
+    pub fn generate_video_config_cpp(
+        &self,
+        project: &ProjectSettings,
+        use_stringtable: bool,
+        output_path: &Path,
+    ) -> Result<()> {
+        let author = Self::author_display_name(project, use_stringtable);
+        let name = Self::mod_display_name(project, use_stringtable);
 
-        // 视频模组不需要音乐配置，只生成基本的模组信息
         let video_config_content = format!(
             "class CfgPatches\n{{\n    class {}\n    {{\n        units[] = {{}};\n        weapons[] = {{}};\n        requiredVersion = 0.1;\n        requiredAddons[] = {{}};\n        author = \"{}\";\n        name = \"{}\";\n    }};\n}}\n",
-            project.class_name,
-            ascii_author_name,
-            ascii_mod_name
+            project.class_name, author, name
         );
 
-        std::fs::write(output_path, video_config_content)
-            .with_context(|| format!("无法写入视频配置文件: {:?}", output_path))?;
-
+        Self::write_arma_config_file(output_path, &video_config_content)?;
         debug!("生成视频config.cpp: {:?}", output_path);
+        Ok(())
+    }
+
+    /// 生成 stringtable.xml
+    pub fn generate_stringtable_xml(
+        &self,
+        project: &ProjectSettings,
+        tracks: &[Track],
+        use_tags: bool,
+        use_google_translate: bool,
+        mod_dir: &Path,
+    ) -> Result<()> {
+        let mut translator = if use_google_translate {
+            match GoogleTranslateClient::new() {
+                Ok(client) => Some(client),
+                Err(error) => {
+                    warn!("Google 翻译客户端初始化失败，将使用拼音回退: {}", error);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let content = match project.mod_type {
+            crate::models::ModType::Music => {
+                generate_music_stringtable(project, tracks, use_tags, &mut translator)
+            }
+            crate::models::ModType::Video => {
+                generate_video_stringtable(project, &mut translator)
+            }
+        };
+        let path = mod_dir.join("stringtable.xml");
+        write_stringtable(&path, &content)?;
+        debug!("生成 stringtable.xml: {:?}", path);
         Ok(())
     }
 
@@ -236,28 +287,44 @@ impl TemplateEngine {
         tracks: &[Track],
         copied_files: &[String],
         use_tags: bool,
+        use_stringtable: bool,
+        use_google_translate: bool,
         mod_dir: &Path,
     ) -> Result<()> {
-        // 根据模组类型生成不同的配置文件
+        if use_stringtable {
+            self.generate_stringtable_xml(
+                project,
+                tracks,
+                use_tags,
+                use_google_translate,
+                mod_dir,
+            )?;
+        }
+
         match project.mod_type {
             crate::models::ModType::Music => {
-                // 音乐模组：生成完整的配置文件
                 let config_path = mod_dir.join("config.cpp");
-                self.generate_config_cpp(project, tracks, copied_files, use_tags, &config_path)?;
+                self.generate_config_cpp(project, use_stringtable, &config_path)?;
 
                 let mod_path = mod_dir.join("mod.cpp");
-                self.generate_mod_cpp(project, &mod_path)?;
+                self.generate_mod_cpp(project, use_stringtable, &mod_path)?;
 
                 let tracks_path = mod_dir.join("FileListWithMusicTracks.hpp");
-                self.generate_tracks_hpp(project, tracks, copied_files, use_tags, &tracks_path)?;
+                self.generate_tracks_hpp(
+                    project,
+                    tracks,
+                    copied_files,
+                    use_tags,
+                    use_stringtable,
+                    &tracks_path,
+                )?;
             }
             crate::models::ModType::Video => {
-                // 视频模组：只生成基本的配置文件
                 let config_path = mod_dir.join("config.cpp");
-                self.generate_video_config_cpp(project, &config_path)?;
+                self.generate_video_config_cpp(project, use_stringtable, &config_path)?;
 
                 let mod_path = mod_dir.join("mod.cpp");
-                self.generate_mod_cpp(project, &mod_path)?;
+                self.generate_mod_cpp(project, use_stringtable, &mod_path)?;
             }
         }
 
@@ -268,11 +335,8 @@ impl TemplateEngine {
 
 impl Default for TemplateEngine {
     fn default() -> Self {
-        // 如果模板引擎创建失败，返回一个基本的实例
-        // 这样程序不会崩溃，但模板功能可能不可用
         Self::new().unwrap_or_else(|e| {
             eprintln!("警告: 无法创建模板引擎: {}", e);
-            // 创建一个空的模板引擎作为后备
             Self {
                 handlebars: Handlebars::new(),
             }
@@ -299,6 +363,7 @@ mod tests {
             mod_name: project.mod_name.clone(),
             author_name: project.author_name.clone(),
             class_name: project.class_name.clone(),
+            music_class_name: project.mod_name.clone(),
         };
         assert!(!data.mod_name.is_empty());
     }

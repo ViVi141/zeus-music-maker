@@ -19,6 +19,8 @@ mod video_chunk_parallel_processor;
 mod ffmpeg_plugin;
 mod ffmpeg_downloader;
 mod templates;
+mod stringtable;
+mod translation;
 mod ui;
 mod threading;
 mod parallel_converter;

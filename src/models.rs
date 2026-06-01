@@ -21,6 +21,9 @@ pub struct Track {
     pub original_duration: u32,
     /// 原始分贝值（用于恢复默认值）
     pub original_decibels: i32,
+    /// 曲目名是否来自内部拼音/ASCII 重命名（启用翻译时跳过 API）
+    #[serde(default)]
+    pub internally_renamed: bool,
 }
 
 impl Track {
@@ -34,6 +37,7 @@ impl Track {
             decibels: 0,
             original_duration: 0,
             original_decibels: 0,
+            internally_renamed: false,
         }
     }
 
@@ -226,6 +230,12 @@ pub struct ExportSettings {
     pub append_tags: bool,
     /// 是否使用默认Logo
     pub use_default_logo: bool,
+    /// 是否生成 stringtable.xml 并使用 $STR_ 本地化键（支持中文曲目名）
+    #[serde(default = "ExportSettings::default_use_stringtable")]
+    pub use_stringtable: bool,
+    /// 是否使用 Google 免费翻译 API 生成英文等回退文本（需联网）
+    #[serde(default = "ExportSettings::default_use_google_translate")]
+    pub use_google_translate: bool,
 }
 
 /// 任务类型
@@ -404,11 +414,23 @@ impl TaskManager {
 
 }
 
+impl ExportSettings {
+    fn default_use_stringtable() -> bool {
+        true
+    }
+
+    fn default_use_google_translate() -> bool {
+        true
+    }
+}
+
 impl Default for ExportSettings {
     fn default() -> Self {
         Self {
             append_tags: true,
             use_default_logo: true,
+            use_stringtable: true,
+            use_google_translate: true,
         }
     }
 }

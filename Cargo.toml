@@ -54,7 +54,7 @@ tokio = { version = "1.40", features = ["rt", "rt-multi-thread", "net", "fs", "i
 crossbeam-channel = "0.5"
 
 # HTTP client for downloading FFmpeg
-reqwest = { version = "0.12", features = ["json", "stream", "gzip", "brotli"] }
+reqwest = { version = "0.12", features = ["json", "stream", "gzip", "brotli", "blocking"] }
 indicatif = "0.17"
 zip = "0.6"
 
