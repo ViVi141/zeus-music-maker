@@ -257,39 +257,54 @@ build_portable.bat
 
 ## 📁 项目结构
 
+本仓库为 **Rust 单栈** 项目（egui GUI），**不包含** `python/` 或其它脚本语言实现。
+
 ```
 zeus-music-maker/
-├── src/
-│   ├── app.rs                          # 主应用程序逻辑
-│   ├── main.rs                         # 程序入口点
-│   ├── models.rs                       # 数据模型定义
-│   ├── ui.rs                          # 用户界面组件
-│   ├── audio_decrypt.rs               # 音频解密功能
-│   ├── audio_converter.rs             # 音频转换功能
-│   ├── video_converter.rs             # 视频转换功能
-│   ├── video_chunk_converter.rs       # 视频分片转换
-│   ├── video_chunk_parallel_processor.rs # 视频并行处理
-│   ├── paa_converter.rs               # PAA转换功能
-│   ├── ffmpeg_downloader.rs           # FFmpeg下载管理
-│   ├── ffmpeg_plugin.rs               # FFmpeg插件系统
-│   ├── parallel_converter.rs          # 并行转换引擎
-│   ├── threading.rs                   # 多线程任务管理
-│   ├── templates.rs                   # 模组模板生成
-│   ├── resource_manager.rs            # 资源管理器
-│   ├── embedded.rs                    # 嵌入资源管理
-│   └── utils/                         # 工具函数
-│       ├── constants.rs               # 常量定义
-│       ├── file_utils.rs              # 文件操作工具
-│       └── string_utils.rs            # 字符串处理工具
-├── templates/                         # 模组模板文件
-├── assets/                           # 资源文件
-├── lib/                              # 外部库文件
-├── Cargo.toml                        # Rust项目配置
-├── README.md                         # 项目说明文档
-├── 系统要求.md                        # 系统要求文档
-├── 文件名ASCII转换说明.md            # 文件名处理技术文档
-└── LICENSE                           # 许可证文件
+├── src/                                # Rust 源码
+│   ├── main.rs                         # 程序入口
+│   ├── app.rs                          # 应用状态与 eframe 集成
+│   ├── app/lifecycle.rs                # 启动/关闭生命周期
+│   ├── ui.rs                           # 界面与对话框
+│   ├── models.rs                       # 项目与轨道数据模型
+│   ├── file_ops.rs                     # 导入/导出文件操作
+│   ├── audio.rs                        # 音频通用逻辑
+│   ├── audio_decrypt.rs                # KGM / NCM 解密
+│   ├── audio_converter.rs              # 音频转 OGG
+│   ├── video_converter.rs              # 视频转 OGV
+│   ├── video_chunk_converter.rs          # 大文件分片
+│   ├── video_chunk_parallel_processor.rs # 分片并行处理
+│   ├── paa_converter.rs                # 图片转 PAA
+│   ├── parallel_converter.rs           # 并行转换引擎
+│   ├── threading.rs                    # 后台任务与进度
+│   ├── ffmpeg_downloader.rs            # FFmpeg 下载
+│   ├── ffmpeg_plugin.rs                # FFmpeg 调用封装
+│   ├── templates.rs                    # Handlebars 模组配置生成
+│   ├── resource_manager.rs             # 资源路径管理
+│   ├── embedded.rs                     # 内嵌模板与资源
+│   └── utils/                          # 常量、文件、字符串工具
+├── templates/                          # Arma 3 配置模板（Handlebars）
+├── assets/                             # logo、KGM 密钥等内置资源
+├── bin/                                # ncmdump.exe 等可选二进制
+├── lib/                                # NCM 解密等外部 DLL（可选）
+├── build.rs                            # Windows 资源/manifest 构建脚本
+├── build_portable.bat                  # 便携版发布构建
+├── Cargo.toml                          # Rust 依赖与发布配置
+├── README.md                           # 本文件
+├── 模组制作完整指南.md                  # 用户教程（含完整目录）
+├── 系统要求.md
+├── 文件名ASCII转换说明.md
+└── LICENSE
 ```
+
+### 文档索引
+
+| 文档 | 用途 |
+|------|------|
+| [README.md](README.md) | 功能概览、构建与开发 |
+| [模组制作完整指南.md](模组制作完整指南.md) | 从安装到发布模组的完整步骤 |
+| [系统要求.md](系统要求.md) | 系统兼容性与排错 |
+| [文件名ASCII转换说明.md](文件名ASCII转换说明.md) | 多语言文件名处理说明 |
 
 ---
 
@@ -432,9 +447,7 @@ build_portable.bat
 
 ## 📚 相关文档
 
-- [模组制作完整指南.md](模组制作完整指南.md) - **从零到完成模组的详细教程**
-- [系统要求.md](系统要求.md) - 详细的系统要求、兼容性信息和故障排除指南
-- [文件名ASCII转换说明.md](文件名ASCII转换说明.md) - 文件名处理技术文档
+详见上方 [文档索引](#文档索引)。用户教程目录已按章节展开，见 [模组制作完整指南 · 目录](模组制作完整指南.md#-目录)。
 
 ---
 
